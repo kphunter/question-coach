@@ -1,0 +1,12 @@
+Purpose
+
+Non-prompt configuration
+
+{
+  "max_input_length": 2000,
+  "enable_examples": true,
+  "tone_defaults": {
+    "formality": "medium",
+    "directness": "low"
+  }
+}

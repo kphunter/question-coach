@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Data and models
+inputs/fetched/
+*.db
+*.sqlite
+models/
+
+# Environment variables
+.env
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+
+# Private
+inputs/docs/

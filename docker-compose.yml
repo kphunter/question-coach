@@ -1,0 +1,192 @@
+services:
+  # Qdrant Vector Database
+  # Web UI available at: http://localhost:6333/dashboard
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-qdrant
+    ports:
+      - "6333:6333" # HTTP API + Web Dashboard
+      - "6334:6334" # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf \"GET /readyz HTTP/1.0\\r\\n\\r\\n\" >&3 && read -r status <&3 && [[ \"$$status\" == *\"200\"* ]] && exec 3>&-'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # Ollama (Optional - for local embeddings and LLM)
+  # Uncomment if you want to use Ollama instead of Gemini
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: rag-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   networks:
+  #     - rag-network
+  #   restart: unless-stopped
+  #   # For GPU support, uncomment:
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: 1
+  #   #           capabilities: [gpu]
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: rag-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ingestion-config.yaml:/app/ingestion-config.yaml:ro
+      - ./agents/prompts/stages:/app/agents/prompts/stages:ro
+      - ./inputs:/app/inputs:ro
+      - qdrant_data:/apqdrant_data
+    environment:
+      # API Configuration
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+
+      # Gemini API (recommended - set your key here or use .env file)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Qdrant Connection
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - COLLECTION_NAME=documents-gemini
+
+      # Ollama Connection (if using Ollama instead of Gemini)
+      # - OLLAMA_BASE_URL=http://ollama:11434
+
+      # Embedding Provider: "gemini", "ollama", or "sentence_transformers"
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+
+      # LLM Provider: "gemini" or "ollama"
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_LLM_MODEL=gemini-2.5-flash
+
+      # Logging
+      - LOG_LEVEL=INFO
+
+      # Use environment variables instead of ingestion-config.yaml (required in Docker)
+      - CONFIG_FROM_ENV=true
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    # Uncomment if using Ollama:
+    # ollama:
+    #   condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # Ingestion Service (for running ingest.py commands)
+  # This service doesn't run continuously - use it to execute ingestion tasks
+  # Usage: docker compose run --rm ingestion <command>
+  # Example: docker compose run --rm ingestion reindex-all
+  ingestion:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: rag-ingestion
+    volumes:
+      - ./ingestion-config.yaml:/app/ingestion-config.yaml:ro
+      - ./inputs:/app/inputs
+      - qdrant_data:/apqdrant_data
+      - ./src:/app/src:ro
+      - ./ingest.py:/app/ingest.py:ro
+      - ./fetch_article.py:/app/fetch_article.py:ro
+    environment:
+      # Gemini API
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Qdrant Connection (points to qdrant service)
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - COLLECTION_NAME=documents-gemini
+
+      # Embedding Provider
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
+      - GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+
+      # LLM Provider
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_LLM_MODEL=gemini-2.5-flash
+
+      # Logging
+      - LOG_LEVEL=INFO
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    networks:
+      - rag-network
+    entrypoint: ["python", "ingest.py"]
+    profiles:
+      - tools
+
+  # Frontend (Nginx serving static HTML)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1/health",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  # Uncomment if using Ollama:
+  # ollama_data:
+  #   driver: local
+  qdrant_data:
+    driver: local

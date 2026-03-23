@@ -1,0 +1,28 @@
+# Stage manifest — lists each QFT stage in order.
+# The API reads this file, then loads each stage's system prompt
+# from the corresponding prompt_file in this directory.
+
+stages:
+  - id: 1
+    name: "Question Focus"
+    prompt_file: "stage-1-question-focus.md"
+
+  - id: 2
+    name: "Produce Questions"
+    prompt_file: "stage-2-produce-questions.md"
+
+  - id: 3
+    name: "Improve Questions"
+    prompt_file: "stage-3-improve-questions.md"
+
+  - id: 4
+    name: "Prioritize Questions"
+    prompt_file: "stage-4-prioritize-questions.md"
+
+  - id: 5
+    name: "Next Steps"
+    prompt_file: "stage-5-next-steps.md"
+
+  - id: 6
+    name: "Reflect"
+    prompt_file: "stage-6-reflect.md"
