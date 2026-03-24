@@ -1,82 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import QuestionProductionStage from './components/QuestionProductionStage'
-import CategorizeQuestionsStage from './components/CategorizeQuestionsStage'
-import PrioritizeQuestionsStage from './components/PrioritizeQuestionsStage'
-
-const STAGES = [
-  {
-    id: 1,
-    name: 'Question Focus',
-    icon: 'center_focus_strong',
-    heading: 'Stage 1 · Question Focus',
-    description:
-      "You'll be given a prompt or stimulus that sparks curiosity — without dictating a direction.",
-    instruction:
-      "Let's start. Have you been given a question focus by your teacher, or do you need to develop one? Tell me about your topic or assignment.",
-    placeholder: 'Share your question focus or describe your assignment topic…',
-    component: 'default'
-  },
-  {
-    id: 2,
-    name: 'Produce Questions',
-    icon: 'add_circle',
-    heading: 'Stage 2 · Produce Questions',
-    description:
-      'Generate as many questions as possible. No judging, no stopping to answer — just write them all.',
-    instruction:
-      "Now let's generate questions. Ask as many as you can about your topic. Don't evaluate or answer them — just list them. When you're ready, submit your list and I'll respond.",
-    placeholder: 'Add a question and press Enter…',
-    component: 'question-list'
-  },
-  {
-    id: 3,
-    name: 'Improve Questions',
-    icon: 'tune',
-    heading: 'Stage 3 · Improve Questions',
-    description:
-      'Categorize your questions as open or closed, then practise converting between the two types.',
-    instruction:
-      "Sort each question into open or closed. When you're done, submit the classification so we can discuss patterns and possible revisions.",
-    placeholder: 'Review your categorized questions…',
-    component: 'categorize'
-  },
-  {
-    id: 4,
-    name: 'Prioritize Questions',
-    icon: 'filter_list',
-    heading: 'Stage 4 · Prioritize Questions',
-    description:
-      'Select your top questions by dragging them into an intentional ranking order.',
-    instruction:
-      'Drag your questions into priority order. Put the most important one at the top, then submit your ranked list.',
-    placeholder: 'Describe your prioritization criteria…',
-    component: 'prioritize'
-  },
-  {
-    id: 5,
-    name: 'Next Steps',
-    icon: 'rocket_launch',
-    heading: 'Stage 5 · Discuss Next Steps',
-    description:
-      'Map out how your prioritized questions will guide your research, writing, or inquiry.',
-    instruction:
-      'You have your questions — now what? Tell me how you will use them in the next part of your assignment or inquiry.',
-    placeholder: 'Describe how your questions will shape your next steps…',
-    component: 'default'
-  },
-  {
-    id: 6,
-    name: 'Reflect',
-    icon: 'self_improvement',
-    heading: 'Stage 6 · Reflect',
-    description:
-      'Consider what you learned, how your thinking changed, and how you will apply the QFT going forward.',
-    instruction:
-      'Reflect on the process. What changed in your thinking? Which stage helped you the most?',
-    placeholder: 'Share your reflections on the question formulation process…',
-    component: 'default'
-  }
-]
+import { stages } from './stages'
+import { uid } from './utils'
 
 const defaultSettings = {
   use_gemini: true,
@@ -85,83 +9,29 @@ const defaultSettings = {
   gemini_model: 'gemini-2.5-flash'
 }
 
-function uid() {
-  return Math.random().toString(36).slice(2, 10)
-}
-
 function buildApiBase() {
   if (window.location.hostname === 'localhost') return 'http://localhost:8000'
   return `${window.location.protocol}//${window.location.hostname}:8000`
 }
 
-function serializeQuestions(questions) {
-  return questions
-    .map((q, index) => `${index + 1}. ${q.text.trim()}`)
-    .join('\n')
-}
-
-function serializeCategorizedQuestions(memory) {
-  const { questions, classifications } = memory
-  const open = []
-  const closed = []
-
-  questions.forEach((question, index) => {
-    const group = classifications[question.id] || 'unassigned'
-    const line = `${index + 1}. ${question.text}`
-    if (group === 'open') open.push(line)
-    else if (group === 'closed') closed.push(line)
-  })
-
-  return [
-    'Open questions:',
-    ...(open.length ? open : ['(none)']),
-    '',
-    'Closed questions:',
-    ...(closed.length ? closed : ['(none)'])
-  ].join('\n')
-}
-
-function serializePriorities(memory) {
-  const ranked = memory.priorities
-    .map((id, index) => memory.questions.find((q) => q.id === id))
-    .filter(Boolean)
-    .map((question, index) => `${index + 1}. ${question.text}`)
-
-  return ['Priority ranking:', ...(ranked.length ? ranked : ['(none)'])].join('\n')
-}
-
-function getStageSubmissionText(stage, memory, draftText) {
-  switch (stage.component) {
-    case 'question-list':
-      return serializeQuestions(memory.questions)
-    case 'categorize':
-      return serializeCategorizedQuestions(memory)
-    case 'prioritize':
-      return serializePriorities(memory)
-    default:
-      return draftText.trim()
-  }
-}
-
-function getDisplayText(stage, memory, draftText) {
-  const text = getStageSubmissionText(stage, memory, draftText)
-  return text.trim()
-}
-
-function addQuestion(memory, text = '') {
-  const nextQuestion = { id: uid(), text }
-  const nextQuestions = [...memory.questions, nextQuestion]
-  const nextPriorities = [...memory.priorities, nextQuestion.id]
+/** @returns {import('./stages').SharedMemory} */
+function initialMemory() {
   return {
-    ...memory,
-    questions: nextQuestions,
-    priorities: nextPriorities
+    questions: [{ id: uid(), text: '' }],
+    classifications: {},
+    priorities: [],
+    stageNotes: {}
   }
 }
 
 export default function App() {
   const API = useMemo(buildApiBase, [])
-  const [currentStage, setCurrentStage] = useState(1)
+
+  // ── Core pipeline state ────────────────────────────────────────────────────
+  const [memory, setMemory] = useState(initialMemory)
+  const [stageIndex, setStageIndex] = useState(0)
+
+  // ── UI state ───────────────────────────────────────────────────────────────
   const [isConnected, setIsConnected] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -169,39 +39,26 @@ export default function App() {
   const [stagePrompts, setStagePrompts] = useState({})
   const [statusText, setStatusText] = useState('Connecting…')
   const [snackbar, setSnackbar] = useState('')
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState(() => [
     {
       id: uid(),
       role: 'assistant',
-      text: STAGES[0].instruction,
-      stageId: 1,
+      text: stages[0].instruction,
+      stageIndex: 0,
       isCoach: true,
       createdAt: new Date().toISOString()
     }
   ])
   const [settings, setSettings] = useState(defaultSettings)
-  const [memory, setMemory] = useState({
-    questions: [{ id: uid(), text: '' }],
-    classifications: {},
-    priorities: [],
-    stageNotes: {}
-  })
 
-  const stage = STAGES[currentStage - 1]
+  const stage = stages[stageIndex]
 
+  // ── Reset draft when changing stages ──────────────────────────────────────
   useEffect(() => {
     setDraftText('')
-  }, [currentStage])
+  }, [stageIndex])
 
-  useEffect(() => {
-    if (memory.priorities.length === 0 && memory.questions.length > 0) {
-      setMemory((prev) => ({
-        ...prev,
-        priorities: prev.questions.map((question) => question.id)
-      }))
-    }
-  }, [memory.priorities.length, memory.questions])
-
+  // ── Fetch stage prompts + poll health ─────────────────────────────────────
   useEffect(() => {
     let active = true
 
@@ -243,111 +100,62 @@ export default function App() {
 
     fetchStages()
     checkHealth()
-    const interval = window.setInterval(() => {
-      checkHealth()
-    }, 5000)
-
+    const interval = window.setInterval(checkHealth, 5000)
     return () => {
       active = false
       window.clearInterval(interval)
     }
   }, [API])
 
+  // ── Snackbar auto-dismiss ─────────────────────────────────────────────────
   useEffect(() => {
     if (!snackbar) return undefined
     const timer = window.setTimeout(() => setSnackbar(''), 3500)
     return () => window.clearTimeout(timer)
   }, [snackbar])
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function pushMessage(message) {
     setMessages((prev) => [...prev, { id: uid(), createdAt: new Date().toISOString(), ...message }])
   }
 
-  function moveStage(direction) {
-    goToStage(currentStage + direction)
-  }
-
-  function goToStage(nextStage) {
-    if (nextStage < 1 || nextStage > STAGES.length || nextStage === currentStage) return
-    const dir = nextStage > currentStage ? 1 : -1
-    const next = STAGES[nextStage - 1]
-    setCurrentStage(nextStage)
+  function goToStage(nextIndex) {
+    if (nextIndex < 0 || nextIndex >= stages.length || nextIndex === stageIndex) return
+    const dir = nextIndex > stageIndex ? 1 : -1
+    const next = stages[nextIndex]
+    setStageIndex(nextIndex)
     pushMessage({
       role: 'assistant',
       text: `${dir > 0 ? 'Moving to' : 'Back to'} ${next.heading}`,
-      stageId: nextStage,
+      stageIndex: nextIndex,
       isMarker: true
     })
-    pushMessage({ role: 'assistant', text: next.instruction, stageId: nextStage, isCoach: true })
+    pushMessage({ role: 'assistant', text: next.instruction, stageIndex: nextIndex, isCoach: true })
   }
 
   function updateSettings(name, value) {
     setSettings((prev) => ({ ...prev, [name]: value }))
   }
 
-  function updateQuestion(id, text) {
-    setMemory((prev) => ({
-      ...prev,
-      questions: prev.questions.map((question) => (question.id === id ? { ...question, text } : question))
-    }))
-  }
-
-  function appendQuestion(afterIndex = null) {
-    setMemory((prev) => {
-      const nextQuestion = { id: uid(), text: '' }
-      const nextQuestions = [...prev.questions]
-      if (afterIndex == null || afterIndex >= nextQuestions.length - 1) nextQuestions.push(nextQuestion)
-      else nextQuestions.splice(afterIndex + 1, 0, nextQuestion)
-
-      const nextPriorities = [...prev.priorities]
-      if (!nextPriorities.includes(nextQuestion.id)) nextPriorities.push(nextQuestion.id)
-
-      return {
-        ...prev,
-        questions: nextQuestions,
-        priorities: nextPriorities
-      }
-    })
-  }
-
-  function removeQuestion(id) {
-    setMemory((prev) => {
-      const nextQuestions = prev.questions.filter((question) => question.id !== id)
-      const fallbackQuestions = nextQuestions.length ? nextQuestions : [{ id: uid(), text: '' }]
-      const nextClassifications = { ...prev.classifications }
-      delete nextClassifications[id]
-      const nextPriorities = prev.priorities.filter((item) => item !== id)
-      const normalizedPriorities = fallbackQuestions.map((question) => question.id).filter((qid) => nextPriorities.includes(qid) || fallbackQuestions.length === 1)
-      const withMissing = fallbackQuestions.map((question) => question.id).filter((qid) => !normalizedPriorities.includes(qid))
-
-      return {
-        ...prev,
-        questions: fallbackQuestions,
-        classifications: nextClassifications,
-        priorities: [...normalizedPriorities, ...withMissing]
-      }
-    })
-  }
-
-  function updateClassifications(nextClassifications) {
-    setMemory((prev) => ({ ...prev, classifications: nextClassifications }))
-  }
-
-  function updatePriorities(nextPriorities) {
-    setMemory((prev) => ({ ...prev, priorities: nextPriorities }))
+  /**
+   * Called by stage components on every live edit.
+   * Merges the result into shared memory via the stage's output transformer.
+   */
+  function handleStageResult(result) {
+    setMemory((prev) => stage.output(result, prev))
   }
 
   async function handleSend() {
-    const bodyText = getDisplayText(stage, memory, draftText)
+    const bodyText = stage.serialize(memory, draftText)
     if (!bodyText) {
-      setSnackbar(stage.component === 'default' ? 'Enter a message first.' : 'Add at least one question first.')
+      setSnackbar(stage.inputType === 'textarea' ? 'Enter a message first.' : 'Add at least one question first.')
       return
     }
 
     if (!isConnected || isProcessing) return
 
     const contextualMsg = `[QFT ${stage.heading}]\n\n${bodyText}`
-    pushMessage({ role: 'user', text: bodyText, stageId: currentStage })
+    pushMessage({ role: 'user', text: bodyText, stageIndex })
     setIsProcessing(true)
 
     try {
@@ -357,7 +165,7 @@ export default function App() {
         search_strategy: settings.search_strategy,
         use_gemini: settings.use_gemini,
         gemini_model: settings.gemini_model,
-        system_prompt: stagePrompts[currentStage] || null
+        system_prompt: stagePrompts[stage.number] ?? null
       }
 
       const response = await fetch(`${API}/chat`, {
@@ -378,24 +186,18 @@ export default function App() {
       }
 
       const data = await response.json()
-      pushMessage({ role: 'assistant', text: data.response, sources: data.sources || [], stageId: currentStage })
-      setMemory((prev) => ({
-        ...prev,
-        stageNotes: {
-          ...prev.stageNotes,
-          [currentStage]: bodyText
-        }
-      }))
-      if (stage.component === 'default') setDraftText('')
+      pushMessage({ role: 'assistant', text: data.response, sources: data.sources || [], stageIndex })
+      if (stage.inputType === 'textarea') setDraftText('')
     } catch (error) {
-      pushMessage({ role: 'assistant', text: `Sorry, I ran into an error: ${error.message}`, stageId: currentStage })
+      pushMessage({ role: 'assistant', text: `Sorry, I ran into an error: ${error.message}`, stageIndex })
       setSnackbar(error.message)
     } finally {
       setIsProcessing(false)
     }
   }
 
-  const filledQuestions = memory.questions.filter((question) => question.text.trim())
+  // ── Derived views ─────────────────────────────────────────────────────────
+  const filledQuestions = memory.questions.filter((q) => q.text.trim())
 
   return (
     <div className="app-shell">
@@ -480,15 +282,18 @@ export default function App() {
 
       <nav className="stage-stepper">
         <div className="stepper-track">
-          {STAGES.map((item, index) => {
-            const stepNumber = index + 1
-            const state = stepNumber < currentStage ? 'completed' : stepNumber === currentStage ? 'active' : ''
+          {stages.map((item, index) => {
+            const state = index < stageIndex ? 'completed' : index === stageIndex ? 'active' : ''
             return (
               <div className="step-cluster" key={item.id}>
-                {index > 0 && <div className={`step-connector ${stepNumber <= currentStage ? 'done' : ''}`} />}
-                <button className={`stage-step ${state}`} onClick={() => goToStage(stepNumber)} type="button">
+                {index > 0 && <div className={`step-connector ${index <= stageIndex ? 'done' : ''}`} />}
+                <button className={`stage-step ${state}`} onClick={() => goToStage(index)} type="button">
                   <span className="step-circle">
-                    {state === 'completed' ? <span className="material-symbols-rounded step-check">check</span> : item.id}
+                    {state === 'completed' ? (
+                      <span className="material-symbols-rounded step-check">check</span>
+                    ) : (
+                      item.number
+                    )}
                   </span>
                   <span className="step-label">{item.name}</span>
                 </button>
@@ -504,11 +309,11 @@ export default function App() {
           <div className="stage-info-text">{stage.description}</div>
         </div>
         <div className="stage-nav">
-          <button className="md-text-btn" onClick={() => moveStage(-1)} disabled={currentStage === 1} type="button">
+          <button className="md-text-btn" onClick={() => goToStage(stageIndex - 1)} disabled={stageIndex === 0} type="button">
             <span className="material-symbols-rounded mini-icon">arrow_back</span>
             Back
           </button>
-          <button className="md-tonal-btn" onClick={() => moveStage(1)} disabled={currentStage === STAGES.length} type="button">
+          <button className="md-tonal-btn" onClick={() => goToStage(stageIndex + 1)} disabled={stageIndex === stages.length - 1} type="button">
             Next stage
             <span className="material-symbols-rounded mini-icon">arrow_forward</span>
           </button>
@@ -581,54 +386,16 @@ export default function App() {
 
         <aside className="stage-panel">
           <div className="panel-card">
-            {stage.component === 'question-list' && (
-              <QuestionProductionStage
-                questions={memory.questions}
-                onAdd={appendQuestion}
-                onChange={updateQuestion}
-                onRemove={removeQuestion}
-              />
-            )}
-
-            {stage.component === 'categorize' && (
-              <CategorizeQuestionsStage
-                questions={filledQuestions}
-                classifications={memory.classifications}
-                onChange={updateClassifications}
-              />
-            )}
-
-            {stage.component === 'prioritize' && (
-              <PrioritizeQuestionsStage
-                questions={filledQuestions}
-                priorities={memory.priorities.filter((id) => filledQuestions.some((question) => question.id === id))}
-                onChange={updatePriorities}
-              />
-            )}
-
-            {stage.component === 'default' && (
-              <div className="default-stage-panel">
-                <h3>Stage workspace</h3>
-                <p>{stage.instruction}</p>
-                <div className="memory-summary">
-                  <div><strong>Questions:</strong> {filledQuestions.length}</div>
-                  <div>
-                    <strong>Open:</strong>{' '}
-                    {filledQuestions.filter((question) => memory.classifications[question.id] === 'open').length}
-                  </div>
-                  <div>
-                    <strong>Closed:</strong>{' '}
-                    {filledQuestions.filter((question) => memory.classifications[question.id] === 'closed').length}
-                  </div>
-                </div>
-              </div>
-            )}
+            <stage.Component
+              input={stage.input(memory)}
+              onSubmit={handleStageResult}
+            />
           </div>
         </aside>
       </main>
 
       <footer className="input-area">
-        {stage.component === 'default' && (
+        {stage.inputType === 'textarea' && (
           <div className="input-row">
             <div className="input-field-wrap">
               <textarea
@@ -646,16 +413,28 @@ export default function App() {
                 }}
               />
             </div>
-            <button className="send-fab" id="sendBtn" disabled={!isConnected || isProcessing} title="Send" onClick={handleSend} type="button">
+            <button
+              className="send-fab"
+              id="sendBtn"
+              disabled={!isConnected || isProcessing}
+              title="Send"
+              onClick={handleSend}
+              type="button"
+            >
               <span className="material-symbols-rounded">send</span>
             </button>
           </div>
         )}
 
-        {stage.component !== 'default' && (
+        {stage.inputType !== 'textarea' && (
           <div className="stage-submit-row">
             <div className="input-hint stage-submit-hint">{statusText}</div>
-            <button className="md-tonal-btn submit-stage-btn" disabled={!isConnected || isProcessing} onClick={handleSend} type="button">
+            <button
+              className="md-tonal-btn submit-stage-btn"
+              disabled={!isConnected || isProcessing || !filledQuestions.length}
+              onClick={handleSend}
+              type="button"
+            >
               Submit stage
               <span className="material-symbols-rounded mini-icon">send</span>
             </button>

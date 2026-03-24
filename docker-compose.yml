@@ -111,10 +111,10 @@ services:
     profiles:
       - tools
 
-  # Frontend (Nginx serving static HTML)
+  # Frontend (React + Vite, served via Nginx)
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend-react
       dockerfile: Dockerfile
     container_name: rag-frontend
     ports:

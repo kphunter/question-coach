@@ -33,9 +33,19 @@ function DroppableColumn({ id, title, items }) {
   )
 }
 
-export default function CategorizeQuestionsStage({ questions, classifications, onChange }) {
+/**
+ * @param {{ input: { questions: {id:string,text:string}[], classifications: Record<string,'open'|'closed'> }, onSubmit: (result: {classifications: Record<string,'open'|'closed'>}) => void }} props
+ */
+export default function CategorizeQuestionsStage({ input, onSubmit }) {
+  const { questions, classifications: initialClassifications } = input
+  const [classifications, setClassifications] = useState(initialClassifications)
   const [activeId, setActiveId] = useState(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  function handleChange(next) {
+    setClassifications(next)
+    onSubmit({ classifications: next })
+  }
 
   const grouped = useMemo(() => {
     const open = []
@@ -53,9 +63,9 @@ export default function CategorizeQuestionsStage({ questions, classifications, o
   }, [questions, classifications])
 
   function getContainer(questionId) {
-    if (grouped.unassigned.some((question) => question.id === questionId)) return 'unassigned'
-    if (grouped.open.some((question) => question.id === questionId)) return 'open'
-    if (grouped.closed.some((question) => question.id === questionId)) return 'closed'
+    if (grouped.unassigned.some((q) => q.id === questionId)) return 'unassigned'
+    if (grouped.open.some((q) => q.id === questionId)) return 'open'
+    if (grouped.closed.some((q) => q.id === questionId)) return 'closed'
     return null
   }
 
@@ -72,10 +82,10 @@ export default function CategorizeQuestionsStage({ questions, classifications, o
     const next = { ...classifications }
     if (destination === 'open' || destination === 'closed') next[activeQuestionId] = destination
     else delete next[activeQuestionId]
-    onChange(next)
+    handleChange(next)
   }
 
-  const activeQuestion = questions.find((question) => question.id === activeId)
+  const activeQuestion = questions.find((q) => q.id === activeId)
 
   return (
     <div className="dnd-stage-wrap">

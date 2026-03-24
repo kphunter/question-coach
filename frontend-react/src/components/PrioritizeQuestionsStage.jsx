@@ -20,19 +20,22 @@ function SortablePriorityItem({ id, rank, text }) {
   )
 }
 
-export default function PrioritizeQuestionsStage({ questions, priorities, onChange }) {
+/**
+ * @param {{ input: { questions: {id:string,text:string}[], priorities: string[] }, onSubmit: (result: {priorities: string[]}) => void }} props
+ */
+export default function PrioritizeQuestionsStage({ input, onSubmit }) {
+  const { questions, priorities: initialPriorities } = input
+  const [priorities, setPriorities] = useState(initialPriorities)
   const [activeId, setActiveId] = useState(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const orderedIds = useMemo(() => {
     const seen = new Set(priorities)
-    const missing = questions.map((question) => question.id).filter((id) => !seen.has(id))
-    return [...priorities, ...missing].filter((id) => questions.some((question) => question.id === id))
+    const missing = questions.map((q) => q.id).filter((id) => !seen.has(id))
+    return [...priorities, ...missing].filter((id) => questions.some((q) => q.id === id))
   }, [questions, priorities])
 
-  const orderedQuestions = orderedIds
-    .map((id) => questions.find((question) => question.id === id))
-    .filter(Boolean)
+  const orderedQuestions = orderedIds.map((id) => questions.find((q) => q.id === id)).filter(Boolean)
 
   function handleDragEnd(event) {
     const { active, over } = event
@@ -40,10 +43,12 @@ export default function PrioritizeQuestionsStage({ questions, priorities, onChan
     if (!over || active.id === over.id) return
     const oldIndex = orderedIds.indexOf(String(active.id))
     const newIndex = orderedIds.indexOf(String(over.id))
-    onChange(arrayMove(orderedIds, oldIndex, newIndex))
+    const next = arrayMove(orderedIds, oldIndex, newIndex)
+    setPriorities(next)
+    onSubmit({ priorities: next })
   }
 
-  const activeQuestion = questions.find((question) => question.id === activeId)
+  const activeQuestion = questions.find((q) => q.id === activeId)
 
   return (
     <div className="dnd-stage-wrap">
@@ -65,7 +70,14 @@ export default function PrioritizeQuestionsStage({ questions, priorities, onChan
             ))}
           </div>
         </SortableContext>
-        <DragOverlay>{activeQuestion ? <div className="priority-item overlay"><div className="priority-rank">•</div><div className="priority-text">{activeQuestion.text}</div></div> : null}</DragOverlay>
+        <DragOverlay>
+          {activeQuestion ? (
+            <div className="priority-item overlay">
+              <div className="priority-rank">•</div>
+              <div className="priority-text">{activeQuestion.text}</div>
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
     </div>
   )
