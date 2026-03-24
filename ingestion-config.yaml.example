@@ -6,6 +6,9 @@
 # ============================================================================
 documents:
   folder_path: "./inputs/docs"
+  # Additional folders to watch (relative or absolute paths)
+  additional_folders:
+    - "./inputs/fetched"
   supported_extensions: [".md", ".html", ".pdf", ".docx", ".rtf"]
   ignored_directories: [".obsidian", ".git", "__pycache__", "node_modules"]
   ignored_file_patterns: [".DS_Store", "Thumbs.db", ".last_incremental_run"]

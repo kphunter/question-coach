@@ -1,0 +1,7 @@
+# URLs to fetch and ingest into the knowledge base.
+# One URL per line. Lines starting with # are ignored.
+#
+# Example:
+# https://example.com/article
+https://uwaterloo.ca/writing-and-communication-centre/develop-research-question
+https://www.nature.com/articles/s41562-025-02292-5

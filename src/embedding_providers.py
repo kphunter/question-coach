@@ -43,8 +43,8 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
     def generate_embedding(self, text: str) -> List[float]:
         """Generate embedding for a single text using Ollama."""
-        url = f"{self.config.base_url}/api/embeddings"
-        payload = {"model": self.config.model, "prompt": text}
+        url = f"{self.config.ollama.base_url}/api/embeddings"
+        payload = {"model": self.config.ollama.model, "prompt": text}
 
         try:
             response = requests.post(url, json=payload, timeout=self.config.timeout)
@@ -106,16 +106,16 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         """Test if Ollama is accessible and the model is available."""
         try:
             # Test basic API connectivity
-            response = requests.get(f"{self.config.base_url}/api/tags", timeout=10)
+            response = requests.get(f"{self.config.ollama.base_url}/api/tags", timeout=10)
             response.raise_for_status()
 
             # Check if the embedding model is available
             models = response.json().get("models", [])
             model_names = [model.get("name", "").split(":")[0] for model in models]
 
-            if self.config.model not in model_names:
+            if self.config.ollama.model not in model_names:
                 self.logger.error(
-                    f"Model {self.config.model} not found in Ollama. Available models: {model_names}"
+                    f"Model {self.config.ollama.model} not found in Ollama. Available models: {model_names}"
                 )
                 return False
 
@@ -125,7 +125,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
                 return False
 
             self.logger.info(
-                f"Ollama connection successful. Model: {self.config.model}, Dimension: {len(test_embedding)}"
+                f"Ollama connection successful. Model: {self.config.ollama.model}, Dimension: {len(test_embedding)}"
             )
             return True
 
@@ -142,25 +142,8 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         self.logger = logging.getLogger(__name__)
         self._embedding_dimension = None
 
-        if not config.gemini:
-            raise ValueError(
-                "Gemini configuration is required when using Gemini provider"
-            )
-
         self.gemini_config = config.gemini
-
-        default_model = EmbeddingConfig.model_fields["model"].default
-        config_model = (config.model or "").strip()
-        gemini_model = ""
-        if self.gemini_config and self.gemini_config.model:
-            gemini_model = self.gemini_config.model.strip()
-
-        if config_model and config_model != default_model:
-            self.model_name = config_model
-        elif gemini_model:
-            self.model_name = gemini_model
-        else:
-            self.model_name = "text-embedding-004"
+        self.model_name = self.gemini_config.model or "text-embedding-004"
 
         # Import and configure Gemini (prefer new google-genai SDK, fallback to google-generativeai)
         # Track which SDK we are using

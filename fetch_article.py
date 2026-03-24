@@ -18,6 +18,7 @@ Features:
 - Enhanced JSON structure with structured markdown content
 """
 
+import os
 import sys
 import argparse
 import json
@@ -373,137 +374,126 @@ CONTENT: {content}
         self, analysis: Dict[str, Any], article_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Display analysis results and get user approval for each field.
-
-        Returns:
-            Updated analysis dictionary with user modifications
+        Display analysis results and manage approval/edit flow.
         """
-        print("\n" + "=" * 80)
-        print("📄 ARTICLE ANALYSIS RESULTS")
-        print("=" * 80)
+        while True:
+            print("\n" + "=" * 80)
+            print("📄 ARTICLE ANALYSIS PREVIEW")
+            print("=" * 80)
 
-        print(f"\n🔗 URL: {article_data['url']}")
-        print(f"📰 Title: {analysis['title']}")
-        print(f"✍️  Author: {analysis['author'] or 'Unknown'}")
-        print(f"📅 Publication Date: {analysis['publication_date'] or 'Unknown'}")
+            print(f"\n🔗 URL: {article_data['url']}")
+            print(f"📰 Title: {analysis['title']}")
+            print(f"✍️  Author: {analysis['author'] or 'Unknown'}")
+            print(f"📅 Publication Date: {analysis['publication_date'] or 'Unknown'}")
+            print(
+                f"\n🏷️  Tags: {', '.join(analysis['tags']) if analysis['tags'] else 'None'}"
+            )
 
-        print(
-            f"\n🏷️  Tags: {', '.join(analysis['tags']) if analysis['tags'] else 'None'}"
-        )
+            print("\nSUMMARY")
+            print("-" * 80)
+            if analysis.get("summary_md"):
+                print(analysis["summary_md"])
+            else:
+                print("Summary not provided.")
 
-        print(f"\n📋 SUMMARY ({len(analysis['summary_md'])} chars):")
-        print("-" * 40)
-        print(analysis["summary_md"])
+            if analysis.get("highlight_md"):
+                print("\nKEY INSIGHTS")
+                print("-" * 80)
+                print(analysis["highlight_md"])
 
-        if analysis["highlight_md"]:
-            print("\n💡 KEY INSIGHTS:")
-            print("-" * 40)
-            print(analysis["highlight_md"])
+            print("\nANALYSIS")
+            print("-" * 80)
+            if analysis.get("source_reliability_md"):
+                print("Source Reliability:")
+                print(analysis["source_reliability_md"])
+            else:
+                print("Source reliability analysis not provided.")
 
-        print("\n🔍 SOURCE RELIABILITY:")
-        print("-" * 40)
-        print(analysis["source_reliability_md"])
+            if analysis.get("fact_checking_md"):
+                print("\nFact-Checking:")
+                print(analysis["fact_checking_md"])
+            else:
+                print("\nFact-checking analysis not provided.")
 
-        print("\n✅ FACT-CHECKING:")
-        print("-" * 40)
-        print(analysis["fact_checking_md"])
+            if analysis.get("citation_md"):
+                print("\nKey Citations:")
+                print(analysis["citation_md"])
 
-        if analysis["citation_md"]:
-            print("\n📊 KEY CITATIONS:")
-            print("-" * 40)
-            print(analysis["citation_md"])
+            print("\n" + "=" * 80)
 
-        print("\n" + "=" * 80)
-        print("Now let's review each field individually...")
+            action, analysis = self.interactive_field_approval(analysis)
+            if action == "accept":
+                return analysis
+            if action == "skip":
+                return None
 
-        return self.interactive_field_approval(analysis)
-
-    def interactive_field_approval(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def interactive_field_approval(
+        self, analysis: Dict[str, Any]
+    ) -> Tuple[str, Dict[str, Any]]:
         """
-        Step-by-step field approval process.
-
-        Returns:
-            Updated analysis dictionary
+        Present approval options and handle accept/edit/skip choices.
         """
-        print("\n" + "=" * 80)
-        print("STEP-BY-STEP FIELD REVIEW")
-        print("=" * 80)
-        print("For each field: Press ENTER to accept, or type your changes")
+        while True:
+            print("\nOptions:")
+            print("  [a] Accept as-is")
+            print("  [e] Edit fields")
+            print("  [s] Skip article")
+            choice = input("Choose an option [a/e/s]: ").strip().lower()
 
-        # 1. Summary approval
-        print("\n📋 SUMMARY APPROVAL:")
-        print("✅ Press ENTER to accept summary")
-        print("🔄 Type 'regenerate' to regenerate analysis")
-        print("❌ Type 'skip' to skip this article")
-        summary_choice = input("Your choice: ").strip()
+            if choice in ("", "a", "accept"):
+                return "accept", analysis
+            if choice in ("e", "edit"):
+                updated_analysis = self.interactive_field_editing(analysis)
+                return "edit", updated_analysis
+            if choice in ("s", "skip"):
+                return "skip", analysis
 
-        if summary_choice.lower() == "skip":
-            return None
-        elif summary_choice.lower() == "regenerate":
-            return {"regenerate": True}
-        elif summary_choice:
-            analysis["summary_md"] = summary_choice
-
-        # 2. Author approval
-        print(f"\n✍️  AUTHOR: {analysis['author'] or 'Unknown'}")
-        author_input = input("Press ENTER to accept, or enter correct author: ").strip()
-        if author_input:
-            analysis["author"] = author_input
-
-        # 3. Publication date approval
-        print(f"\n📅 PUBLICATION DATE: {analysis['publication_date'] or 'Unknown'}")
-        date_input = input(
-            "Press ENTER to accept, or enter correct date (YYYY-MM-DD): "
-        ).strip()
-        if date_input:
-            analysis["publication_date"] = validate_date(date_input)
-
-        # 4. Tags approval
-        current_tags = ", ".join(analysis["tags"]) if analysis["tags"] else "None"
-        print(f"\n🏷️  TAGS: {current_tags}")
-        tags_input = input(
-            "Press ENTER to accept, or enter tags (comma-separated): "
-        ).strip()
-        if tags_input:
-            analysis["tags"] = [tag.strip() for tag in tags_input.split(",")]
-
-        # 5. Notes input
-        print("\n📝 NOTES:")
-        notes_input = input("Enter any additional notes (optional): ").strip()
-        analysis["notes"] = notes_input
-
-        return analysis
+            print("Please enter 'a', 'e', or 's'.")
 
     def interactive_field_editing(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
         Allow user to edit individual fields interactively.
-
-        Returns:
-            Updated analysis dictionary
         """
-        print("\n📝 EDIT MODE - Press Enter to keep current value")
+        print("\n🛠️ EDIT MODE — leave blank to keep the current value.")
 
-        # Edit author
+        new_summary = input("\nSummary (markdown): ").strip()
+        if new_summary:
+            analysis["summary_md"] = new_summary
+
+        new_insights = input("Key insights (markdown): ").strip()
+        if new_insights:
+            analysis["highlight_md"] = new_insights
+
+        new_reliability = input("Source reliability (markdown): ").strip()
+        if new_reliability:
+            analysis["source_reliability_md"] = new_reliability
+
+        new_fact_checking = input("Fact-checking notes (markdown): ").strip()
+        if new_fact_checking:
+            analysis["fact_checking_md"] = new_fact_checking
+
+        new_citations = input("Key citations (markdown): ").strip()
+        if new_citations:
+            analysis["citation_md"] = new_citations
+
         current_author = analysis["author"] or "Unknown"
         new_author = input(f"Author [{current_author}]: ").strip()
         if new_author:
             analysis["author"] = new_author
 
-        # Edit publication date
         current_date = analysis["publication_date"] or "Unknown"
         new_date = input(f"Publication Date (YYYY-MM-DD) [{current_date}]: ").strip()
         if new_date:
             analysis["publication_date"] = validate_date(new_date)
 
-        # Edit tags
         current_tags = ", ".join(analysis["tags"]) if analysis["tags"] else "None"
         new_tags = input(f"Tags (comma-separated) [{current_tags}]: ").strip()
         if new_tags:
-            analysis["tags"] = [tag.strip() for tag in new_tags.split(",")]
+            analysis["tags"] = [tag.strip() for tag in new_tags.split(",") if tag.strip()]
 
-        # Add notes
         notes = input("Additional notes (optional): ").strip()
-        analysis["notes"] = notes if notes else ""
+        if notes:
+            analysis["notes"] = notes
 
         return analysis
 
@@ -847,7 +837,13 @@ Examples:
         """,
     )
 
-    parser.add_argument("urls", nargs="+", help="One or more URLs to process")
+    parser.add_argument("urls", nargs="*", help="One or more URLs to process")
+    parser.add_argument(
+        "--from-file",
+        type=str,
+        metavar="FILE",
+        help="Read URLs from a file (one per line, # for comments). Defaults to inputs/links.txt if it exists.",
+    )
     parser.add_argument("--config", default="ingestion-config.yaml", help="Path to config file")
 
     # Output format options
@@ -891,6 +887,31 @@ Examples:
 
     args = parser.parse_args()
 
+    # Collect URLs from --from-file
+    file_urls = []
+    links_file = args.from_file
+    if links_file is None and not args.urls:
+        # Default to inputs/links.txt when no URLs or file explicitly given
+        default_links = os.path.join(os.path.dirname(__file__), "inputs", "links.txt")
+        if os.path.exists(default_links):
+            links_file = default_links
+
+    if links_file:
+        if not os.path.exists(links_file):
+            print(f"Error: links file not found: {links_file}")
+            sys.exit(1)
+        with open(links_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    file_urls.append(line)
+
+    all_urls = list(dict.fromkeys(args.urls + file_urls))  # deduplicate, preserve order
+
+    if not all_urls:
+        print("Error: no URLs provided. Pass URLs as arguments, use --from-file, or add URLs to inputs/links.txt.")
+        sys.exit(1)
+
     # Validate URLs
     url_pattern = re.compile(
         r"^https?://"  # http:// or https://
@@ -920,7 +941,7 @@ Examples:
         )
 
         # Process URLs and get results
-        processed_count, failed_count, saved_paths = fetcher.process_multiple_urls(args.urls)
+        processed_count, failed_count, saved_paths = fetcher.process_multiple_urls(all_urls)
 
         # Set exit code based on results
         if failed_count == 0:

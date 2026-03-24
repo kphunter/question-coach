@@ -1,114 +1,51 @@
-# Document Ingestion Pipeline Configuration
-# Copy to ingestion-config.yaml and configure before running ingestion.
-
-# ============================================================================
-# DOCUMENT PROCESSING
-# ============================================================================
 documents:
   folder_path: "./inputs/docs"
-  supported_extensions: [".md", ".html", ".pdf", ".docx", ".rtf"]
+  # Additional folders to watch (relative to repo or absolute paths)
+  additional_folders:
+    - "./inputs/fetched"
+  supported_extensions: [".md", ".html"]
   ignored_directories: [".obsidian", ".git", "__pycache__", "node_modules"]
   ignored_file_patterns: [".DS_Store", "Thumbs.db", ".last_incremental_run"]
   ignore_hidden_files: true
-  chunk_size: 1000 # Maximum characters per text chunk
-  chunk_overlap: 200 # Overlap between chunks for context continuity
+  chunk_size: 1000 # characters per chunk
+  chunk_overlap: 200 # overlap between chunks for context continuity
 
-# ============================================================================
-# EMBEDDING
-# Controls how document chunks are converted to vectors for search.
-# NOTE: Switching providers changes vector dimensions — run `ingest clear-all`
-#       before re-indexing, and update collection_name to avoid conflicts.
-# ============================================================================
 embedding:
-  provider: "gemini" # Options: "gemini", "ollama", "sentence_transformers"
-
-  # Ollama (local) — model name used when provider = "ollama"
-  model: "nomic-embed-text" # 768 dimensions
-  # model: "mxbai-embed-large"    # Alternative: 1024 dimensions, higher quality
-  base_url: "http://localhost:11434"
+  provider: "gemini" # options: "gemini", "ollama", "sentence_transformers"
+  # NOTE: switching providers changes vector dimensions — run `ingest clear-all` first
   timeout: 60
-
-  # Gemini (cloud) — used when provider = "gemini"
+  ollama:
+    model: "nomic-embed-text" # alternative: "mxbai-embed-large" (1024 dimensions)
+    base_url: "http://localhost:11434"
   gemini:
-    api_key: "" # Or set GEMINI_API_KEY env var
-    model: "text-embedding-004" # 768 dimensions
-
-  # Sentence Transformers (local Python) — used when provider = "sentence_transformers"
+    model: "gemini-embedding-001"
   sentence_transformers:
-    model: "all-MiniLM-L6-v2" # 384 dimensions, ~90MB
-    # model: "all-mpnet-base-v2" # Alternative: 768 dimensions, ~420MB
-    device: "cpu" # Options: "cpu", "cuda", "mps" (Apple Silicon)
+    model: "all-MiniLM-L6-v2" # alternative: "all-mpnet-base-v2" (768 dimensions, higher quality)
+    device: "cpu" # options: "cpu", "cuda", "mps" (Apple Silicon)
 
-# ============================================================================
-# LLM
-# Used during ingestion only — extracts metadata (author, title, date, tags)
-# from each document. Not used for chat responses.
-# ============================================================================
 llm:
-  provider: "gemini" # Options: "gemini", "ollama"
-
-  # Ollama (local) — used when provider = "ollama"
-  model: "llama3.2"
-  # model: "llama3.2:3b"   # Smaller/faster alternative
-  # model: "qwen2.5:7b"    # Good for structured data extraction
-  base_url: "http://localhost:11434"
+  provider: "gemini" # options: "gemini", "ollama"
+  # used during ingestion only to extract document metadata (author, title, date, tags)
   timeout: 120
-
-  # Gemini (cloud) — used when provider = "gemini"
-  gemini:
-    api_key: "" # Or set GEMINI_API_KEY env var
-    model: "gemini-2.5-flash"
-
-  # Content processing
-  content_max_chars: 8000 # Fallback character limit if auto-detection fails
+  content_max_chars: 8000 # character limit sent to LLM; used if auto-detection fails
   auto_detect_context_limit: true
-  context_utilization: 0.25 # Fraction of model context window to use
-
-  # Metadata extraction
+  context_utilization: 0.25 # fraction of model context window to use
   enabled: true
   max_retries: 3
   requests_per_minute: 5
-  metadata_extraction_prompt: |
-    You are a metadata extraction assistant. Your task is to analyze the provided document and extract specific metadata fields.
+  ollama:
+    model: "llama3.2" # alternatives: "llama3.2:3b", "qwen2.5:7b"
+    base_url: "http://localhost:11434"
+  gemini:
+    model: "gemini-2.5-flash"
 
-    Return a valid JSON object with these exact fields:
-
-    {{
-      "author": "string or null",
-      "title": "string",
-      "publication_date": "YYYY-MM-DD or null",
-      "tags": ["topic1", "topic2", "topic3"]
-    }}
-
-    Guidelines:
-    - Author: Look for "By [Name]", "Author: [Name]", "[Name] writes", or extract from URL paths like "/authors/name/" or "/john-doe/"
-    - Title: Extract from content headers/titles, or clean filename (remove dates, convert dashes to spaces)
-    - Date: Find "Published", "Posted", dates like "Jan 2025", "2025-01-20", "January 20, 2025", or YYYY-MM-DD in filename
-    - Tags: Extract 3-7 relevant keywords/topics from the actual content
-    - Return valid JSON only, no other text
-
-    Document to analyze:
-    SOURCE URL: {source_url}
-    FILENAME: {filename}
-    CONTENT: {content}
-
-# ============================================================================
-# VECTOR DATABASE
-# ============================================================================
 vector_db:
   provider: "qdrant"
-  host: "localhost" # Use "qdrant" when running via docker compose
+  host: "localhost" # use "qdrant" when running via Docker Compose
   port: 6333
+  # for Qdrant Cloud, set url and api_key (via QDRANT_URL / QDRANT_API_KEY in .env)
+  collection_name: "documents-gemini" # update when switching embedding providers
+  distance_metric: "cosine" # options: "cosine", "euclidean", "dot"
 
-  # Qdrant Cloud — uncomment to use managed instance (takes precedence over host/port)
-  # url: "https://your-cluster-url.gcp.cloud.qdrant.io:6333"
-  # api_key: ""  # Or set QDRANT_API_KEY env var
-
-  collection_name: "documents-gemini" # Change when switching embedding providers
-  distance_metric: "cosine" # Options: "cosine", "euclidean", "dot"
-
-# ============================================================================
-# LOGGING
-# ============================================================================
 logging:
-  level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR
+  level: "INFO" # options: DEBUG, INFO, WARNING, ERROR

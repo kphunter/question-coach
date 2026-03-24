@@ -32,13 +32,12 @@ htmlcov/
 *.log
 
 # Data and models
-inputs/fetched/
 *.db
 *.sqlite
 models/
 
 # Environment variables
-.env
+#.env
 .env.*.local
 
 # Temporary files
@@ -46,4 +45,7 @@ models/
 *.temp
 
 # Private
+#ingestion-config.yaml
 inputs/docs/
+inputs/fetched/
+inputs/.last_incremental_run

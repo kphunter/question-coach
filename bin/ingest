@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # Wrapper script to run ingest.py inside Docker container
 # This allows running ingestion commands without Python installed locally
 
@@ -42,27 +42,18 @@ if [ ! -f ingestion-config.yaml ]; then
 fi
 
 # Ensure qdrant service is running
-echo "Ensuring Qdrant service is running..."
-docker compose up -d qdrant
+docker compose up -d qdrant >/dev/null 2>&1
 
 # Wait for qdrant to be healthy
-echo "Waiting for Qdrant to be ready..."
 timeout=60
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
-    if docker compose ps qdrant | grep -q "healthy"; then
-        echo "Qdrant is ready!"
+    if docker compose ps qdrant 2>/dev/null | grep -q "healthy"; then
         break
     fi
     sleep 2
     elapsed=$((elapsed + 2))
 done
 
-if [ $elapsed -ge $timeout ]; then
-    echo "Warning: Qdrant may not be fully ready. Proceeding anyway..."
-fi
-
 # Run the ingestion command with all arguments passed through
-echo "Running: ingest.py $*"
-echo ""
 docker compose run --rm ingestion "$@"

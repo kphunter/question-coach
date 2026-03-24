@@ -44,7 +44,7 @@ cp .env.example .env
 # Index new/changed documents only
 ./bin/ingest process-new
 
-# Fetch and index a web article
+# Fetch a web article (saved to inputs/fetched for incremental ingestion)
 ./bin/fetch-ingest https://example.com/article
 
 # Search the knowledge base
@@ -72,7 +72,7 @@ inputs/
 ├── fetched/    # Articles fetched from URLs
 ```
 
-Place documents in `inputs/docs/` then run `./bin/ingest reindex-all`.
+Place documents in `inputs/docs/` or fetch new articles into `inputs/fetched/` (included via `documents.additional_folders`) and then run `./bin/ingest reindex-all`.
 
 
 

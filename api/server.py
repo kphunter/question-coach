@@ -5,6 +5,10 @@ This server provides REST API endpoints to interact with the RAG pipeline,
 enabling search queries with context-enhanced responses using Gemini.
 """
 
+# Pre-import langchain before google.genai to ensure onnxruntime initializes first,
+# preventing a spurious "Unknown CPU vendor" warning on stderr.
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: F401
+
 import os
 import sys
 from pathlib import Path
@@ -115,6 +119,7 @@ STAGES_DIR = PROMPTS_DIR / "stages"
 GLOBAL_PROMPT_FILES = [
     "QC-AGENT.md",
     "IDENTITY.md",
+    "SOUL.md",
     "POLICIES.md",
     "USER.md",
 ]

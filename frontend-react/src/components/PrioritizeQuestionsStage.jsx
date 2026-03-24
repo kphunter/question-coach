@@ -1,0 +1,72 @@
+import { DndContext, DragOverlay, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, arrayMove, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { useMemo, useState } from 'react'
+
+function SortablePriorityItem({ id, rank, text }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1
+  }
+
+  return (
+    <div className="priority-item" ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <div className="priority-rank">{rank}</div>
+      <div className="priority-text">{text}</div>
+      <span className="material-symbols-rounded drag-indicator">drag_indicator</span>
+    </div>
+  )
+}
+
+export default function PrioritizeQuestionsStage({ questions, priorities, onChange }) {
+  const [activeId, setActiveId] = useState(null)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  const orderedIds = useMemo(() => {
+    const seen = new Set(priorities)
+    const missing = questions.map((question) => question.id).filter((id) => !seen.has(id))
+    return [...priorities, ...missing].filter((id) => questions.some((question) => question.id === id))
+  }, [questions, priorities])
+
+  const orderedQuestions = orderedIds
+    .map((id) => questions.find((question) => question.id === id))
+    .filter(Boolean)
+
+  function handleDragEnd(event) {
+    const { active, over } = event
+    setActiveId(null)
+    if (!over || active.id === over.id) return
+    const oldIndex = orderedIds.indexOf(String(active.id))
+    const newIndex = orderedIds.indexOf(String(over.id))
+    onChange(arrayMove(orderedIds, oldIndex, newIndex))
+  }
+
+  const activeQuestion = questions.find((question) => question.id === activeId)
+
+  return (
+    <div className="dnd-stage-wrap">
+      <div className="dnd-stage-header">
+        <h3>Prioritize questions</h3>
+        <p>Drag questions up or down. The top item becomes the highest priority.</p>
+      </div>
+
+      <DndContext
+        collisionDetection={closestCenter}
+        onDragStart={(event) => setActiveId(String(event.active.id))}
+        onDragEnd={handleDragEnd}
+        sensors={sensors}
+      >
+        <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
+          <div className="priority-column">
+            {orderedQuestions.map((question, index) => (
+              <SortablePriorityItem key={question.id} id={question.id} rank={index + 1} text={question.text} />
+            ))}
+          </div>
+        </SortableContext>
+        <DragOverlay>{activeQuestion ? <div className="priority-item overlay"><div className="priority-rank">•</div><div className="priority-text">{activeQuestion.text}</div></div> : null}</DragOverlay>
+      </DndContext>
+    </div>
+  )
+}

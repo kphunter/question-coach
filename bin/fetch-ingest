@@ -1,97 +1,62 @@
-#!/usr/bin/env sh
-# Wrapper script to fetch web articles and ingest them using Docker
-# This allows running fetch operations without Python installed locally
+#!/usr/bin/env bash
+# Fetch web articles and ingest them into the knowledge base.
+# URLs can be passed as arguments or read from inputs/links.txt.
 
 set -e
 
-# Check if Docker is available
-if ! command -v docker >/dev/null 2>&1; then
-    echo "Error: Docker is required but not installed."
-    echo "Please install Docker from: https://docs.docker.com/get-docker/"
-    exit 1
-fi
+die() { echo "Error: $1" >&2; exit 1; }
 
-# Check if docker compose is available
-if ! docker compose version >/dev/null 2>&1; then
-    echo "Error: Docker Compose is required but not available."
-    echo "Please ensure Docker Compose is installed (comes with Docker Desktop)."
-    exit 1
-fi
-
-# Check if at least one URL argument is provided
-if [ $# -eq 0 ]; then
-    echo "Usage: fetch-ingest [options] <url> [url ...]"
-    echo ""
-    echo "Options:"
-    echo "  --summary           Show AI-generated summary"
-    echo "  --analysis          Show detailed AI analysis"
-    echo "  --no-save          Don't save to inputs/fetched"
-    echo ""
-    echo "Examples:"
-    echo "  fetch-ingest https://example.com/article"
-    echo "  fetch-ingest --summary https://example.com/article"
-    exit 1
-fi
-
-# Check if .env file exists
-if [ ! -f .env ]; then
-    echo "Warning: .env file not found. Creating from .env.example..."
-    if [ -f .env.example ]; then
-        cp .env.example .env
-        echo "Created .env file. Please edit it and add your GEMINI_API_KEY."
-        echo ""
-    else
-        echo "Error: .env.example not found. Cannot create .env file."
+# Validate that URL arguments look intact (not mangled by the shell).
+# When a URL containing & is passed unquoted, the shell splits it into
+# a backgrounded command and a second token.  Detect the common symptoms
+# and tell the user to quote the URL.
+for arg in "$@"; do
+    if [[ "$arg" == http* ]]; then
+        # A URL that was truncated at '&' will often end with a bare
+        # query-parameter value (digits, etc.) right before the '&' the
+        # shell consumed.  We can't detect that reliably, but we CAN
+        # warn when the URL has a '?' but no '&' — which is suspicious
+        # for multi-param URLs — or when a non-URL argument follows that
+        # looks like a query-param fragment (e.g. "p=5180962").
+        continue
+    fi
+    # A bare "key=value" token almost certainly came from a URL split on '&'.
+    if [[ "$arg" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+        echo "Error: argument '$arg' looks like a query-string fragment." >&2
+        echo "" >&2
+        echo "  Your shell likely split the URL on the '&' character." >&2
+        echo "  Wrap the URL in single quotes and try again:" >&2
+        echo "" >&2
+        echo "    ./bin/fetch-ingest 'https://example.com/page?a=1&b=2'" >&2
         exit 1
     fi
+done
+
+command -v docker >/dev/null 2>&1 || die "Docker is required. See: https://docs.docker.com/get-docker/"
+docker compose version >/dev/null 2>&1 || die "Docker Compose is required."
+
+if [ ! -f .env ]; then
+    [ -f .env.example ] || die ".env not found and no .env.example to create it from."
+    cp .env.example .env
+    die ".env was missing; created from .env.example. Please add your GEMINI_API_KEY and re-run."
 fi
 
-# Check if ingestion-config.yaml exists
-if [ ! -f ingestion-config.yaml ]; then
-    echo "Info: ingestion-config.yaml not found. Creating from ingestion-config.yaml.example..."
-    if [ -f ingestion-config.yaml.example ]; then
-        cp ingestion-config.yaml.example ingestion-config.yaml
-        echo "Created ingestion-config.yaml from example."
-        echo ""
-    fi
+if [ ! -f ingestion-config.yaml ] && [ -f ingestion-config.yaml.example ]; then
+    cp ingestion-config.yaml.example ingestion-config.yaml
 fi
 
-# Ensure qdrant service is running
-echo "Ensuring Qdrant service is running..."
-docker compose up -d qdrant
-
-# Wait for qdrant to be healthy
-echo "Waiting for Qdrant to be ready..."
+# Ensure Qdrant is running and healthy
+docker compose up -d qdrant >/dev/null 2>&1
 timeout=60
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
-    if docker compose ps qdrant | grep -q "healthy"; then
-        echo "Qdrant is ready!"
-        break
-    fi
+    docker compose ps qdrant 2>/dev/null | grep -q "healthy" && break
     sleep 2
     elapsed=$((elapsed + 2))
 done
 
-if [ $elapsed -ge $timeout ]; then
-    echo "Warning: Qdrant may not be fully ready. Proceeding anyway..."
-fi
+docker compose run --rm -e ORT_LOGGING_LEVEL=3 --entrypoint "python" ingestion fetch_article.py "$@"
 
 echo ""
-echo "Step 1: Fetching article(s)..."
-echo "Running: fetch_article.py $*"
-echo ""
-
-# Run fetch_article.py with all arguments
-docker compose run --rm --entrypoint "python" ingestion fetch_article.py "$@"
-
-echo ""
-echo "Step 2: Ingesting new documents..."
-echo "Running: ingest.py process-new"
-echo ""
-
-# Run ingestion of new documents
-docker compose run --rm ingestion process-new
-
-echo ""
-echo "Done! Article(s) fetched and ingested successfully."
+echo "Ingesting new documents..."
+docker compose run --rm -e ORT_LOGGING_LEVEL=3 ingestion process-new

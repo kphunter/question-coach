@@ -185,7 +185,7 @@ class OllamaLLMProvider(LLMProvider):
             return self._context_limit
 
         # Model-specific context window detection
-        model_name = self.config.model.lower()
+        model_name = self.config.ollama.model.lower()
 
         # Ollama model context window mappings (tokens)
         model_limits = {
@@ -228,13 +228,13 @@ class OllamaLLMProvider(LLMProvider):
                 8000, int(detected_limit * utilization * 4)
             )  # tokens * utilization * 4 (chars)
             self.logger.info(
-                f"Auto-detected context limit for {self.config.model}: {auto_limit} chars ({utilization * 100:.0f}% of {detected_limit} tokens)"
+                f"Auto-detected context limit for {self.config.ollama.model}: {auto_limit} chars ({utilization * 100:.0f}% of {detected_limit} tokens)"
             )
         else:
             # Unknown model, use configured default
             auto_limit = self.config.content_max_chars
             self.logger.warning(
-                f"Unknown model {self.config.model}, using configured limit: {auto_limit} chars"
+                f"Unknown model {self.config.ollama.model}, using configured limit: {auto_limit} chars"
             )
         self._context_limit = auto_limit
         return self._context_limit
@@ -283,9 +283,9 @@ class OllamaLLMProvider(LLMProvider):
         final_prompt_length = len(prompt)
         self.logger.debug(f"Final prompt length: {final_prompt_length} chars")
 
-        url = f"{self.config.base_url}/api/generate"
+        url = f"{self.config.ollama.base_url}/api/generate"
         payload = {
-            "model": self.config.model,
+            "model": self.config.ollama.model,
             "prompt": prompt,
             "stream": False,
             "format": "json",
@@ -293,7 +293,7 @@ class OllamaLLMProvider(LLMProvider):
 
         for attempt in range(self.config.max_retries):
             try:
-                response = requests.post(url, json=payload, timeout=self.config.timeout)
+                response = requests.post(url, json=payload, timeout=self.config.timeout)  # noqa: E501
                 response.raise_for_status()
 
                 result = response.json()
@@ -373,7 +373,7 @@ class OllamaLLMProvider(LLMProvider):
         """Test if Ollama is accessible and the model is available."""
         try:
             # Test basic API connectivity
-            response = requests.get(f"{self.config.base_url}/api/tags", timeout=10)
+            response = requests.get(f"{self.config.ollama.base_url}/api/tags", timeout=10)
             response.raise_for_status()
 
             # Check if the LLM model is available
@@ -382,15 +382,15 @@ class OllamaLLMProvider(LLMProvider):
             base_model_names = [name.split(":")[0] for name in full_model_names]
 
             # Check if the requested model exists (either full name or base name)
-            config_model_base = self.config.model.split(":")[0]
+            config_model_base = self.config.ollama.model.split(":")[0]
             model_found = (
-                self.config.model in full_model_names
+                self.config.ollama.model in full_model_names
                 or config_model_base in base_model_names
             )
 
             if not model_found:
                 self.logger.error(
-                    f"Model {self.config.model} not found in Ollama. Available models: {full_model_names}"
+                    f"Model {self.config.ollama.model} not found in Ollama. Available models: {full_model_names}"
                 )
                 return False
 
@@ -402,7 +402,7 @@ class OllamaLLMProvider(LLMProvider):
                 return False
 
             self.logger.info(
-                f"Ollama LLM connection successful. Model: {self.config.model}"
+                f"Ollama LLM connection successful. Model: {self.config.ollama.model}"
             )
             return True
 
@@ -435,8 +435,8 @@ class OllamaLLMProvider(LLMProvider):
 
     def _make_llm_request(self, prompt: str, for_json: bool = False, **kwargs) -> str:
         """Make Ollama-specific LLM request and return raw response text."""
-        url = f"{self.config.base_url}/api/generate"
-        payload = {"model": self.config.model, "prompt": prompt, "stream": False}
+        url = f"{self.config.ollama.base_url}/api/generate"
+        payload = {"model": self.config.ollama.model, "prompt": prompt, "stream": False}
 
         # Add JSON format hint for JSON requests
         if for_json:
@@ -445,7 +445,7 @@ class OllamaLLMProvider(LLMProvider):
         # Apply any additional kwargs
         payload.update(kwargs)
 
-        response = requests.post(url, json=payload, timeout=self.config.timeout)
+        response = requests.post(url, json=payload, timeout=self.config.timeout)  # noqa: E501
         response.raise_for_status()
 
         result = response.json()
@@ -462,11 +462,6 @@ class GeminiLLMProvider(LLMProvider):
         self.logger = logging.getLogger(__name__)
         self._context_limit = None
         self.content_shortener = ContentShortener(chunk_size=1000, chunk_overlap=0)
-
-        if not config.gemini:
-            raise ValueError(
-                "Gemini configuration is required when using Gemini LLM provider"
-            )
 
         self.gemini_config = config.gemini
 

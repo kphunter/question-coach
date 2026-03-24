@@ -6,6 +6,10 @@ A command-line interface for the document ingestion pipeline that processes
 documents, generates embeddings, and stores them in a vector database.
 """
 
+# Pre-import langchain before google.genai to ensure onnxruntime initializes first,
+# preventing a spurious "Unknown CPU vendor" warning on stderr.
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: F401
+
 import click
 import json
 import sys
@@ -534,6 +538,60 @@ def test_connections(ctx):
         click.echo("\n✓ All connections successful")
     else:
         click.echo("\n✗ Some connections failed", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("output", default="", required=False)
+@click.pass_context
+def snapshot(ctx, output):
+    """Save a snapshot of the vector index to a file.
+
+    OUTPUT is the path to write the snapshot to. Defaults to
+    inputs/snapshots/<collection>-<timestamp>.snapshot
+    """
+    import os
+    from datetime import datetime
+
+    config = ctx.obj["config"]
+    vector_store = ctx.obj["pipeline"].vector_store
+    collection = config.vector_db.collection_name
+
+    if not output:
+        snapshot_dir = os.path.join(config.documents.folder_path, "..", "snapshots")
+        os.makedirs(snapshot_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output = os.path.join(snapshot_dir, f"{collection}-{timestamp}.snapshot")
+
+    try:
+        path = vector_store.create_snapshot(output)
+        click.echo(f"✓ Snapshot saved to {path}")
+    except Exception as e:
+        click.echo(f"✗ Snapshot failed: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("snapshot_file")
+@click.pass_context
+def restore(ctx, snapshot_file):
+    """Restore the vector index from a snapshot file.
+
+    SNAPSHOT_FILE is the path to the snapshot to restore from.
+    """
+    import os
+
+    if not os.path.exists(snapshot_file):
+        click.echo(f"✗ Snapshot file not found: {snapshot_file}", err=True)
+        sys.exit(1)
+
+    vector_store = ctx.obj["pipeline"].vector_store
+
+    try:
+        vector_store.restore_snapshot(snapshot_file)
+        click.echo(f"✓ Index restored from {snapshot_file}")
+    except Exception as e:
+        click.echo(f"✗ Restore failed: {e}", err=True)
         sys.exit(1)
 
 

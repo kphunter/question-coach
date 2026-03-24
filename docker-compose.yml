@@ -57,42 +57,16 @@ services:
       context: .
       dockerfile: api/Dockerfile
     container_name: rag-api
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     volumes:
       - ./ingestion-config.yaml:/app/ingestion-config.yaml:ro
-      - ./agents/prompts/stages:/app/agents/prompts/stages:ro
+      - ./agents:/app/agents:ro
       - ./inputs:/app/inputs:ro
       - qdrant_data:/apqdrant_data
-    environment:
-      # API Configuration
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
 
-      # Gemini API (recommended - set your key here or use .env file)
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-
-      # Qdrant Connection
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - COLLECTION_NAME=documents-gemini
-
-      # Ollama Connection (if using Ollama instead of Gemini)
-      # - OLLAMA_BASE_URL=http://ollama:11434
-
-      # Embedding Provider: "gemini", "ollama", or "sentence_transformers"
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
-      - GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-
-      # LLM Provider: "gemini" or "ollama"
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
-      - GEMINI_LLM_MODEL=gemini-2.5-flash
-
-      # Logging
-      - LOG_LEVEL=INFO
-
-      # Use environment variables instead of ingestion-config.yaml (required in Docker)
-      - CONFIG_FROM_ENV=true
     depends_on:
       qdrant:
         condition: service_healthy
@@ -118,6 +92,8 @@ services:
       context: .
       dockerfile: api/Dockerfile
     container_name: rag-ingestion
+    env_file:
+      - .env
     volumes:
       - ./ingestion-config.yaml:/app/ingestion-config.yaml:ro
       - ./inputs:/app/inputs
@@ -125,25 +101,7 @@ services:
       - ./src:/app/src:ro
       - ./ingest.py:/app/ingest.py:ro
       - ./fetch_article.py:/app/fetch_article.py:ro
-    environment:
-      # Gemini API
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
 
-      # Qdrant Connection (points to qdrant service)
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - COLLECTION_NAME=documents-gemini
-
-      # Embedding Provider
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-gemini}
-      - GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-
-      # LLM Provider
-      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
-      - GEMINI_LLM_MODEL=gemini-2.5-flash
-
-      # Logging
-      - LOG_LEVEL=INFO
     depends_on:
       qdrant:
         condition: service_healthy

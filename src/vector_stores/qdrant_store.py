@@ -55,11 +55,11 @@ class QdrantVectorStore(VectorStore):
                     "Qdrant Cloud API key is required. Set it in config or QDRANT_API_KEY env var"
                 )
 
-            self.client = QdrantClient(url=config.url, api_key=api_key)
+            self.client = QdrantClient(url=config.url, api_key=api_key, check_compatibility=False)
             self.logger.info(f"Using Qdrant Cloud: {config.url}")
         else:
             # Local Qdrant
-            self.client = QdrantClient(host=config.host, port=config.port)
+            self.client = QdrantClient(host=config.host, port=config.port, check_compatibility=False)
             self.logger.info(f"Using local Qdrant: {config.host}:{config.port}")
 
         # Initialize sparse embedding provider if configured
@@ -624,6 +624,59 @@ class QdrantVectorStore(VectorStore):
         except Exception as e:
             self.logger.error(f"Error ensuring payload indices: {e}")
             return False
+
+    def create_snapshot(self, output_path: str) -> str:
+        """Create a snapshot of the collection and download it to output_path."""
+        import requests
+
+        collection = self.config.collection_name
+        host = self.config.host
+        port = self.config.port
+
+        self.logger.info(f"Creating snapshot for collection '{collection}'...")
+        snap = self.client.create_snapshot(collection)
+
+        url = f"http://{host}:{port}/collections/{collection}/snapshots/{snap.name}"
+        self.logger.info(f"Downloading snapshot from {url}...")
+
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            with open(output_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        self.logger.info(f"Snapshot saved to {output_path}")
+
+        # Clean up snapshot from server
+        self.client.delete_snapshot(collection, snap.name)
+
+        return output_path
+
+    def restore_snapshot(self, snapshot_path: str) -> bool:
+        """Restore a collection from a local snapshot file."""
+        import shutil
+        import tempfile
+
+        collection = self.config.collection_name
+        host = self.config.host
+        port = self.config.port
+
+        # Qdrant's recover_snapshot requires the file to be accessible via URL.
+        # We upload it via the REST API's snapshot upload endpoint instead.
+        self.logger.info(f"Restoring collection '{collection}' from {snapshot_path}...")
+
+        upload_url = f"http://{host}:{port}/collections/{collection}/snapshots/upload?priority=snapshot"
+
+        import requests
+        with open(snapshot_path, "rb") as f:
+            r = requests.post(
+                upload_url,
+                files={"snapshot": (os.path.basename(snapshot_path), f, "application/octet-stream")},
+            )
+            r.raise_for_status()
+
+        self.logger.info(f"Collection '{collection}' restored from snapshot.")
+        return True
 
     def test_connection(self) -> bool:
         """Test if Qdrant is accessible."""

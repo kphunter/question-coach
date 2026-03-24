@@ -139,7 +139,7 @@ class DocumentProcessor:
         ).hexdigest()
 
         # Create source URL with file: protocol for local files (can be overridden by handler)
-        relative_path = str(file_path.relative_to(self.config.folder_path))
+        relative_path = self.file_discovery.get_source_path(file_path)
         default_source_url = f"file:{relative_path}"
 
         # Start with file system metadata (always required)

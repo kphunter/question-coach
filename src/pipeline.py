@@ -170,13 +170,52 @@ class IngestionPipeline:
                 return file_path
         return None
 
+    def _get_last_run_file_path(self) -> Path:
+        """Return the path for the incremental-run marker file.
+
+        The marker always lives in the *parent* of ``folder_path``
+        (i.e. ``inputs/``) so that it sits alongside every folder the
+        pipeline scans rather than inside one of them.
+
+        On first call the method will transparently migrate a legacy
+        marker that was written inside ``folder_path`` (e.g.
+        ``inputs/docs/.last_incremental_run``) to the new location.
+        """
+        documents_folder = Path(self.config.documents.folder_path)
+        inputs_folder = (
+            documents_folder.parent
+            if documents_folder.parent != documents_folder
+            else documents_folder
+        )
+        canonical_path = inputs_folder / ".last_incremental_run"
+
+        # Migrate a stale marker that still sits inside the docs folder.
+        legacy_path = documents_folder / ".last_incremental_run"
+        if (
+            not canonical_path.exists()
+            and legacy_path.exists()
+            and legacy_path != canonical_path
+        ):
+            try:
+                legacy_path.rename(canonical_path)
+                self.logger.info(
+                    f"Migrated incremental marker from {legacy_path} to {canonical_path}"
+                )
+            except OSError as e:
+                self.logger.warning(
+                    f"Could not migrate legacy marker: {e}; using new location"
+                )
+
+        return canonical_path
+
     def add_or_update_document(self, filename: str) -> bool:
         """Add or update a single document by filename."""
         try:
             # Find the file
+            documents_folder = Path(self.config.documents.folder_path)
             files = self.document_processor.get_supported_files()
             target_file = self._find_file_by_name(
-                files, filename, self.config.documents.folder_path
+                files, filename, documents_folder
             )
 
             if not target_file:
@@ -189,8 +228,8 @@ class IngestionPipeline:
                 return False
 
             # Delete existing chunks for this document
-            relative_path = str(
-                target_file.relative_to(self.config.documents.folder_path)
+            relative_path = self.document_processor.file_discovery.get_source_path(
+                target_file
             )
             source_url = f"file:{relative_path}"
             self.vector_store.delete_document(source_url)
@@ -352,9 +391,8 @@ class IngestionPipeline:
 
     def process_new_documents(self) -> Dict[str, Any]:
         """Process only new or modified documents since the last run."""
-        LAST_RUN_FILE = (
-            Path(self.config.documents.folder_path) / ".last_incremental_run"
-        )
+        documents_folder = Path(self.config.documents.folder_path)
+        LAST_RUN_FILE = self._get_last_run_file_path()
 
         try:
             # Get last run timestamp
@@ -440,8 +478,8 @@ class IngestionPipeline:
             # Process each new/modified file
             for file_path in new_or_modified_files:
                 # Delete existing chunks for this document (if any)
-                relative_path = str(
-                    file_path.relative_to(self.config.documents.folder_path)
+                relative_path = self.document_processor.file_discovery.get_source_path(
+                    file_path
                 )
                 source_url = f"file:{relative_path}"
                 self.vector_store.delete_document(source_url)

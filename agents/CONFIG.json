@@ -7,6 +7,6 @@ Non-prompt configuration
   "enable_examples": true,
   "tone_defaults": {
     "formality": "medium",
-    "directness": "low"
+    "directness": "medium"
   }
 }
