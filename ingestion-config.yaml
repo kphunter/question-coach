@@ -11,12 +11,16 @@ documents:
   chunk_overlap: 200 # overlap between chunks for context continuity
 
 embedding:
-  provider: "gemini" # options: "gemini", "ollama", "sentence_transformers"
+  provider: "ollama" # options: "gemini", "ollama", "sentence_transformers"
   # NOTE: switching providers changes vector dimensions — run `ingest clear-all` first
   timeout: 60
   ollama:
-    model: "nomic-embed-text" # alternative: "mxbai-embed-large" (1024 dimensions)
+    model: "nomic-embed-text" # 768-dim, ~274 MB — pulled automatically by the ollama service
+    # alternatives:
+    #   mxbai-embed-large — 1024 dims, stronger MTEB scores, ~670 MB
+    #   gemma3:2b         — 2048 dims, generative model, ~1.7 GB
     base_url: "http://localhost:11434"
+    # Docker Compose overrides this to http://ollama:11434 via the service environment block.
   gemini:
     model: "gemini-embedding-001"
   sentence_transformers:
@@ -41,10 +45,10 @@ llm:
 
 vector_db:
   provider: "qdrant"
-  host: "localhost" # use "qdrant" when running via Docker Compose
+  host: "localhost" # Docker Compose overrides this to "qdrant" via QDRANT_HOST env var
   port: 6333
-  # for Qdrant Cloud, set url and api_key (via QDRANT_URL / QDRANT_API_KEY in .env)
-  collection_name: "documents-gemini" # update when switching embedding providers
+  # for Qdrant Cloud, export QDRANT_URL and QDRANT_API_KEY in your shell
+  collection_name: "documents-nomic" # update when switching embedding providers
   distance_metric: "cosine" # options: "cosine", "euclidean", "dot"
 
 logging:

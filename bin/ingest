@@ -4,56 +4,33 @@
 
 set -e
 
-# Check if Docker is available
-if ! command -v docker >/dev/null 2>&1; then
+command -v docker >/dev/null 2>&1 || {
     echo "Error: Docker is required but not installed."
     echo "Please install Docker from: https://docs.docker.com/get-docker/"
     exit 1
-fi
+}
 
-# Check if docker compose is available
-if ! docker compose version >/dev/null 2>&1; then
+docker compose version >/dev/null 2>&1 || {
     echo "Error: Docker Compose is required but not available."
     echo "Please ensure Docker Compose is installed (comes with Docker Desktop)."
     exit 1
+}
+
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo "Error: GEMINI_API_KEY is not set."
+    echo "Export it in your shell before running:"
+    echo "  export GEMINI_API_KEY=your-key-here"
+    exit 1
 fi
 
-# Check if .env file exists
-if [ ! -f .env ]; then
-    echo "Warning: .env file not found. Creating from .env.example..."
-    if [ -f .env.example ]; then
-        cp .env.example .env
-        echo "Created .env file. Please edit it and add your GEMINI_API_KEY."
-        echo ""
-    else
-        echo "Error: .env.example not found. Cannot create .env file."
-        exit 1
-    fi
+if [ ! -f ingestion-config.yaml ] && [ -f ingestion-config.yaml.example ]; then
+    cp ingestion-config.yaml.example ingestion-config.yaml
+    echo "Created ingestion-config.yaml from example."
 fi
 
-# Check if ingestion-config.yaml exists
-if [ ! -f ingestion-config.yaml ]; then
-    echo "Info: ingestion-config.yaml not found. Creating from ingestion-config.yaml.example..."
-    if [ -f ingestion-config.yaml.example ]; then
-        cp ingestion-config.yaml.example ingestion-config.yaml
-        echo "Created ingestion-config.yaml from example."
-        echo ""
-    fi
-fi
+# Ensure Qdrant and Ollama are running (ollama-pull starts automatically as a dependent)
+docker compose -f docker-compose.kb.yml up -d qdrant ollama ollama-pull >/dev/null 2>&1
 
-# Ensure qdrant service is running
-docker compose up -d qdrant >/dev/null 2>&1
-
-# Wait for qdrant to be healthy
-timeout=60
-elapsed=0
-while [ $elapsed -lt $timeout ]; do
-    if docker compose ps qdrant 2>/dev/null | grep -q "healthy"; then
-        break
-    fi
-    sleep 2
-    elapsed=$((elapsed + 2))
-done
-
-# Run the ingestion command with all arguments passed through
-docker compose run --rm ingestion "$@"
+# Run the ingestion command — Docker Compose enforces depends_on conditions,
+# so it will wait for qdrant (healthy) and ollama-pull (completed) before starting.
+docker compose -f docker-compose.kb.yml run --rm ingestion "$@"

@@ -35,28 +35,22 @@ done
 command -v docker >/dev/null 2>&1 || die "Docker is required. See: https://docs.docker.com/get-docker/"
 docker compose version >/dev/null 2>&1 || die "Docker Compose is required."
 
-if [ ! -f .env ]; then
-    [ -f .env.example ] || die ".env not found and no .env.example to create it from."
-    cp .env.example .env
-    die ".env was missing; created from .env.example. Please add your GEMINI_API_KEY and re-run."
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo "Error: GEMINI_API_KEY is not set."
+    echo "Export it in your shell before running:"
+    echo "  export GEMINI_API_KEY=your-key-here"
+    exit 1
 fi
 
 if [ ! -f ingestion-config.yaml ] && [ -f ingestion-config.yaml.example ]; then
     cp ingestion-config.yaml.example ingestion-config.yaml
 fi
 
-# Ensure Qdrant is running and healthy
-docker compose up -d qdrant >/dev/null 2>&1
-timeout=60
-elapsed=0
-while [ $elapsed -lt $timeout ]; do
-    docker compose ps qdrant 2>/dev/null | grep -q "healthy" && break
-    sleep 2
-    elapsed=$((elapsed + 2))
-done
+# Ensure Qdrant and Ollama are running (ollama-pull starts automatically as a dependent)
+docker compose -f docker-compose.kb.yml up -d qdrant ollama ollama-pull >/dev/null 2>&1
 
-docker compose run --rm -e ORT_LOGGING_LEVEL=3 --entrypoint "python" ingestion fetch_article.py "$@"
+docker compose -f docker-compose.kb.yml run --rm -e ORT_LOGGING_LEVEL=3 --entrypoint "python" ingestion fetch_article.py "$@"
 
 echo ""
 echo "Ingesting new documents..."
-docker compose run --rm -e ORT_LOGGING_LEVEL=3 ingestion process-new
+docker compose -f docker-compose.kb.yml run --rm -e ORT_LOGGING_LEVEL=3 ingestion process-new

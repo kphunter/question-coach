@@ -2,22 +2,30 @@ import { DndContext, DragOverlay, PointerSensor, closestCenter, useDraggable, us
 import { CSS } from '@dnd-kit/utilities'
 import { useMemo, useState } from 'react'
 
-function DraggableQuestion({ id, text, badge }) {
+function DraggableQuestion({ id, text, badge, onQuestionClick }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id })
   const style = {
     transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.3 : 1
+    opacity: isDragging ? 0.3 : 1,
+    cursor: isDragging ? 'grabbing' : 'grab',
   }
 
   return (
-    <div className="question-chip" ref={setNodeRef} style={style} {...listeners} {...attributes}>
+    <div
+      className={`question-chip${onQuestionClick ? ' clickable' : ''}`}
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      onClick={onQuestionClick ? () => onQuestionClick(text) : undefined}
+    >
       <span>{text}</span>
       {badge ? <span className={`chip-badge ${badge}`}>{badge}</span> : null}
     </div>
   )
 }
 
-function DroppableColumn({ id, title, items }) {
+function DroppableColumn({ id, title, items, onQuestionClick }) {
   const { setNodeRef, isOver } = useDroppable({ id })
 
   return (
@@ -26,20 +34,24 @@ function DroppableColumn({ id, title, items }) {
       <div className={`drop-zone ${isOver ? 'is-over' : ''}`} ref={setNodeRef}>
         {items.length === 0 && <div className="drop-empty">Drop here</div>}
         {items.map((question) => (
-          <DraggableQuestion key={question.id} id={question.id} text={question.text} badge={id === 'unassigned' ? '' : id} />
+          <DraggableQuestion
+            key={question.id}
+            id={question.id}
+            text={question.text}
+            badge={id === 'unassigned' ? '' : id}
+            onQuestionClick={onQuestionClick}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-/**
- * @param {{ input: { questions: {id:string,text:string}[], classifications: Record<string,'open'|'closed'> }, onSubmit: (result: {classifications: Record<string,'open'|'closed'>}) => void }} props
- */
-export default function CategorizeQuestionsStage({ input, onSubmit }) {
+export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQuestionClick }) {
   const { questions, classifications: initialClassifications } = input
   const [classifications, setClassifications] = useState(initialClassifications)
   const [activeId, setActiveId] = useState(null)
+  const [submitted, setSubmitted] = useState(false)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function handleChange(next) {
@@ -51,14 +63,12 @@ export default function CategorizeQuestionsStage({ input, onSubmit }) {
     const open = []
     const closed = []
     const unassigned = []
-
     questions.forEach((question) => {
       const group = classifications[question.id]
       if (group === 'open') open.push(question)
       else if (group === 'closed') closed.push(question)
       else unassigned.push(question)
     })
-
     return { unassigned, open, closed }
   }, [questions, classifications])
 
@@ -73,12 +83,10 @@ export default function CategorizeQuestionsStage({ input, onSubmit }) {
     const { active, over } = event
     setActiveId(null)
     if (!over) return
-
     const activeQuestionId = String(active.id)
     const overId = String(over.id)
     const destination = ['unassigned', 'open', 'closed'].includes(overId) ? overId : getContainer(overId)
     if (!destination) return
-
     const next = { ...classifications }
     if (destination === 'open' || destination === 'closed') next[activeQuestionId] = destination
     else delete next[activeQuestionId]
@@ -91,7 +99,10 @@ export default function CategorizeQuestionsStage({ input, onSubmit }) {
     <div className="dnd-stage-wrap">
       <div className="dnd-stage-header">
         <h3>Classify questions</h3>
-        <p>Drag each question into Open or Closed. Unsorted questions stay in the staging area.</p>
+        <p>
+          Drag each question into Open or Closed.{' '}
+          {onQuestionClick && <span className="hint-inline">Tap a question to copy it to the chat box.</span>}
+        </p>
       </div>
 
       <DndContext
@@ -101,12 +112,21 @@ export default function CategorizeQuestionsStage({ input, onSubmit }) {
         sensors={sensors}
       >
         <div className="categorize-grid">
-          <DroppableColumn id="unassigned" title="Unsorted" items={grouped.unassigned} />
-          <DroppableColumn id="open" title="Open" items={grouped.open} />
-          <DroppableColumn id="closed" title="Closed" items={grouped.closed} />
+          <DroppableColumn id="unassigned" title="Unsorted" items={grouped.unassigned} onQuestionClick={onQuestionClick} />
+          <DroppableColumn id="open" title="Open" items={grouped.open} onQuestionClick={onQuestionClick} />
+          <DroppableColumn id="closed" title="Closed" items={grouped.closed} onQuestionClick={onQuestionClick} />
         </div>
-        <DragOverlay>{activeQuestion ? <div className="question-chip overlay">{activeQuestion.text}</div> : null}</DragOverlay>
+        <DragOverlay>
+          {activeQuestion ? <div className="question-chip overlay">{activeQuestion.text}</div> : null}
+        </DragOverlay>
       </DndContext>
+
+      <div className="stage-actions">
+        <button className="md-tonal-btn" onClick={() => { setSubmitted(true); onSend() }} type="button">
+          {submitted ? 'Resubmit classifications' : 'Submit classifications'}
+          <span className="material-symbols-rounded mini-icon">send</span>
+        </button>
+      </div>
     </div>
   )
 }

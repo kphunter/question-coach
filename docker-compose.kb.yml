@@ -1,0 +1,115 @@
+# Knowledge-base services: Qdrant, Ollama, and the ingestion tooling.
+#
+# Start independently of the core stack:
+#   docker compose -f docker-compose.kb.yml up -d
+#
+# Run ingestion commands:
+#   docker compose -f docker-compose.kb.yml run --rm ingestion reindex-all
+#
+# The rag-network is shared with docker-compose.yml (same project name means
+# the same network, so the API can reach qdrant/ollama by service name).
+
+services:
+  # Qdrant Vector Database
+  # Web UI available at: http://localhost:6333/dashboard
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf \"GET /readyz HTTP/1.0\\r\\n\\r\\n\" >&3 && read -r status <&3 && [[ \"$$status\" == *\"200\"* ]] && exec 3>&-'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # Ollama — local embedding model server
+  # For GPU support, uncomment the deploy block below.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - rag-network
+    restart: unless-stopped
+    # For GPU support, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # One-shot init container — pulls nomic-embed-text once Ollama is serving.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["ollama", "pull", "nomic-embed-text"]
+    networks:
+      - rag-network
+    restart: on-failure
+
+  # Ingestion service — run commands against the knowledge base.
+  # Usage: docker compose -f docker-compose.kb.yml run --rm ingestion <command>
+  # Example: docker compose -f docker-compose.kb.yml run --rm ingestion reindex-all
+  ingestion:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: rag-ingestion
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?export GEMINI_API_KEY in your shell before running}
+      - QDRANT_HOST=qdrant
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - ./ingestion-config.yaml:/app/ingestion-config.yaml:ro
+      - ./inputs:/app/inputs
+      - qdrant_data:/app/qdrant_data
+      - ./src:/app/src:ro
+      - ./ingest.py:/app/ingest.py:ro
+      - ./fetch_article.py:/app/fetch_article.py:ro
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    networks:
+      - rag-network
+    entrypoint: ["python", "ingest.py"]
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local
+  qdrant_data:
+    driver: local

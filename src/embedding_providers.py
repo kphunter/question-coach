@@ -34,98 +34,102 @@ class EmbeddingProvider(ABC):
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):
-    """Ollama embedding provider."""
+    """Ollama embedding provider.
+
+    Uses the /api/embed endpoint (Ollama v0.1.26+), which supports native
+    batching and is compatible with all current embedding models including
+    Gemma3, nomic-embed-text, and mxbai-embed-large.
+    """
+
+    _BATCH_SIZE = 32  # max texts per /api/embed request
 
     def __init__(self, config: EmbeddingConfig):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self._embedding_dimension = None
 
-    def generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding for a single text using Ollama."""
-        url = f"{self.config.ollama.base_url}/api/embeddings"
-        payload = {"model": self.config.ollama.model, "prompt": text}
-
+    def _embed(self, input: "str | List[str]") -> List[List[float]]:
+        """Call /api/embed and return a list of embedding vectors."""
+        url = f"{self.config.ollama.base_url}/api/embed"
+        payload = {"model": self.config.ollama.model, "input": input}
         try:
             response = requests.post(url, json=payload, timeout=self.config.timeout)
             response.raise_for_status()
-
-            result = response.json()
-            embedding = result.get("embedding")
-
-            if not embedding:
-                raise ValueError("No embedding returned from Ollama")
-
-            # Cache dimension on first call
-            if self._embedding_dimension is None:
-                self._embedding_dimension = len(embedding)
-
-            return embedding
-
         except requests.RequestException as e:
-            self.logger.error(f"Error calling Ollama API: {e}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error generating embedding: {e}")
+            self.logger.error(f"Ollama /api/embed request failed: {e}")
             raise
 
-    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for multiple texts."""
-        embeddings = []
+        result = response.json()
+        embeddings = result.get("embeddings")
+        if not embeddings:
+            raise ValueError(f"Ollama returned no embeddings for input: {input!r}")
 
-        for i, text in enumerate(texts):
-            try:
-                embedding = self.generate_embedding(text)
-                embeddings.append(embedding)
-
-                # Log progress for large batches
-                if (i + 1) % 10 == 0:
-                    self.logger.info(
-                        f"Generated embeddings for {i + 1}/{len(texts)} texts"
-                    )
-
-                # Small delay to avoid overwhelming Ollama
-                time.sleep(0.1)
-
-            except Exception as e:
-                self.logger.error(f"Failed to generate embedding for text {i}: {e}")
-                raise
+        if self._embedding_dimension is None:
+            self._embedding_dimension = len(embeddings[0])
 
         return embeddings
+
+    def generate_embedding(self, text: str) -> List[float]:
+        """Generate embedding for a single text."""
+        return self._embed(text)[0]
+
+    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Generate embeddings for multiple texts using native batching."""
+        all_embeddings: List[List[float]] = []
+        total = len(texts)
+
+        for start in range(0, total, self._BATCH_SIZE):
+            batch = texts[start : start + self._BATCH_SIZE]
+            try:
+                batch_embeddings = self._embed(batch)
+                all_embeddings.extend(batch_embeddings)
+                self.logger.info(
+                    f"Embedded {min(start + self._BATCH_SIZE, total)}/{total} texts"
+                )
+            except Exception as e:
+                self.logger.error(
+                    f"Batch embedding failed (texts {start}–{start + len(batch) - 1}): {e}"
+                )
+                raise
+
+        return all_embeddings
 
     def get_embedding_dimension(self) -> int:
         """Get the dimension of embeddings."""
         if self._embedding_dimension is None:
-            # Generate a test embedding to determine dimension
-            test_embedding = self.generate_embedding("test")
-            self._embedding_dimension = len(test_embedding)
-
+            self.generate_embedding("test")
         return self._embedding_dimension
 
     def test_connection(self) -> bool:
-        """Test if Ollama is accessible and the model is available."""
+        """Test if Ollama is accessible and the configured model is available."""
         try:
-            # Test basic API connectivity
-            response = requests.get(f"{self.config.ollama.base_url}/api/tags", timeout=10)
+            response = requests.get(
+                f"{self.config.ollama.base_url}/api/tags", timeout=10
+            )
             response.raise_for_status()
 
-            # Check if the embedding model is available
             models = response.json().get("models", [])
-            model_names = [model.get("name", "").split(":")[0] for model in models]
+            # Ollama returns names like "gemma3:2b"; normalise to base name for comparison
+            installed = {m.get("name", "") for m in models}
+            installed_bases = {n.split(":")[0] for n in installed}
+            configured = self.config.ollama.model
+            configured_base = configured.split(":")[0]
 
-            if self.config.ollama.model not in model_names:
+            if configured not in installed and configured_base not in installed_bases:
                 self.logger.error(
-                    f"Model {self.config.ollama.model} not found in Ollama. Available models: {model_names}"
+                    f"Model '{configured}' not found in Ollama. "
+                    f"Run: ollama pull {configured}\n"
+                    f"Installed models: {sorted(installed)}"
                 )
                 return False
 
-            # Test embedding generation
             test_embedding = self.generate_embedding("test connection")
-            if len(test_embedding) == 0:
+            if not test_embedding:
                 return False
 
             self.logger.info(
-                f"Ollama connection successful. Model: {self.config.ollama.model}, Dimension: {len(test_embedding)}"
+                f"Ollama connection OK — model: {configured}, "
+                f"dimension: {len(test_embedding)}"
             )
             return True
 

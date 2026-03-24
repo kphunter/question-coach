@@ -501,11 +501,7 @@ class GeminiLLMProvider(LLMProvider):
                 def generate_content(self, prompt, generation_config=None, **kwargs):
                     # google-genai prefers a `config` dict; fall back gracefully if signature differs
                     cfg = generation_config or {}
-                    config = {}
-                    if "temperature" in cfg:
-                        config["temperature"] = cfg["temperature"]
-                    if "max_output_tokens" in cfg:
-                        config["max_output_tokens"] = cfg["max_output_tokens"]
+                    config = dict(cfg)  # pass all keys through (temperature, max_output_tokens, response_mime_type, etc.)
 
                     try:
                         if config:
@@ -645,8 +641,9 @@ class GeminiLLMProvider(LLMProvider):
                 response = self.model.generate_content(
                     prompt,
                     generation_config={
-                        "temperature": 0.1,  # Low temperature for consistent extraction
-                        "max_output_tokens": 1000,
+                        "temperature": 0.1,
+                        "max_output_tokens": 4096,
+                        "response_mime_type": "application/json",
                     },
                 )
 
@@ -751,6 +748,7 @@ class GeminiLLMProvider(LLMProvider):
             default_config = {
                 "temperature": 0.1,  # Low temperature for consistent JSON
                 "max_output_tokens": 8192,
+                "response_mime_type": "application/json",
             }
         else:
             # Default settings for text generation

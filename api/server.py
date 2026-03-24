@@ -79,6 +79,7 @@ class HealthResponse(BaseModel):
     services: Dict[str, bool]
     collection_exists: bool
     collection_count: Optional[int] = None
+    kb_available: bool = False
 
 
 class CapabilitiesResponse(BaseModel):
@@ -88,6 +89,13 @@ class CapabilitiesResponse(BaseModel):
     native_fusion: bool
     sparse_vectors_enabled: bool
 
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -105,13 +113,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize pipeline
-config_path = Path(__file__).parent.parent / "ingestion-config.yaml"
-if not config_path.exists():
-    raise RuntimeError(f"Configuration file not found: {config_path}")
-
-config = load_config(str(config_path))
-pipeline = IngestionPipeline(config)
+# Initialize pipeline — optional; None when the knowledge base is not running.
+pipeline = None
+_config_path = Path(__file__).parent.parent / "ingestion-config.yaml"
+if _config_path.exists():
+    try:
+        config = load_config(str(_config_path))
+        pipeline = IngestionPipeline(config)
+        logger.info("Knowledge base pipeline initialised")
+    except Exception as _pipeline_err:
+        logger.warning(
+            "KB pipeline init failed — running in direct mode (Gemini only): %s",
+            _pipeline_err,
+        )
+else:
+    logger.info("No ingestion-config.yaml found — running in direct mode (Gemini only)")
 
 AGENTS_DIR = Path(__file__).parent.parent / "agents"
 PROMPTS_DIR = AGENTS_DIR / "prompts"
@@ -184,14 +200,6 @@ def build_system_prompt(stage_prompt: Optional[str]) -> Optional[str]:
     combined = "\n\n".join(parts).strip()
     return combined or None
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-
 def format_sources(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Format search results into source citations."""
     sources = []
@@ -232,37 +240,25 @@ async def generate_gemini_response(
     user_message: str,
     context: str,
     sources: List[Dict[str, Any]],
-    model: str = "gemini-1.5-flash",
+    model: str = "gemini-2.5-flash",
     system_prompt: Optional[str] = None,
 ) -> str:
     """Generate response using Gemini with retrieved context."""
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        logger.warning("google-generativeai not available, using fallback response")
-        return f"Context retrieved successfully. {len(sources)} relevant sources found."
-
-    # Get API key
-    api_key = os.getenv("GEMINI_API_KEY") or config.llm.gemini.api_key if hasattr(config.llm, "gemini") else None
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.warning("Gemini API key not found, using fallback response")
-        return f"Context retrieved successfully. {len(sources)} relevant sources found. (Gemini API key required for enhanced responses)"
+        return f"Context retrieved successfully. {len(sources)} relevant sources found. (GEMINI_API_KEY required for enhanced responses)"
 
     try:
-        genai.configure(api_key=api_key)
+        from google import genai as genai_new
+        from google.genai import types as genai_types
 
-        # Use system_prompt for Gemini's system_instruction if provided
-        model_kwargs = {}
-        if system_prompt:
-            model_kwargs["system_instruction"] = system_prompt
+        client = genai_new.Client(api_key=api_key)
 
-        model_instance = genai.GenerativeModel(model, **model_kwargs)
-
-        # Build prompt with context
         source_list = "\n".join([f"[{s['index']}] {s['title']}" for s in sources])
 
         if context:
-            prompt = f"""CONTEXT FROM KNOWLEDGE BASE:
+            user_turn = f"""CONTEXT FROM KNOWLEDGE BASE:
 {context}
 
 SOURCES:
@@ -273,9 +269,20 @@ USER MESSAGE:
 
 Use the context above to inform your response where relevant. Cite sources using [1], [2], etc. when referencing retrieved content."""
         else:
-            prompt = user_message
+            user_turn = user_message
 
-        response = model_instance.generate_content(prompt)
+        kwargs: Dict[str, Any] = {}
+        if system_prompt:
+            kwargs["config"] = genai_types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+            )
+
+        response = client.models.generate_content(
+            model=model,
+            contents=user_turn,
+            **kwargs,
+        )
         return response.text
 
     except Exception as e:
@@ -296,34 +303,49 @@ async def root():
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check health status of all services."""
+    if pipeline is None:
+        return HealthResponse(
+            status="healthy",
+            services={},
+            collection_exists=False,
+            collection_count=None,
+            kb_available=False,
+        )
     try:
-        # Test connections
         services = pipeline.test_connections()
-
-        # Check collection
         collection_info = pipeline.check_collection()
         collection_exists = collection_info.get("exists", False)
         collection_count = collection_info.get("vectors_count")
-
-        status_str = "healthy" if all(services.values()) and collection_exists else "degraded"
-
+        kb_up = all(services.values()) and collection_exists
         return HealthResponse(
-            status=status_str,
+            status="healthy" if kb_up else "degraded",
             services=services,
             collection_exists=collection_exists,
             collection_count=collection_count,
+            kb_available=kb_up,
         )
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Health check failed: {str(e)}",
+        return HealthResponse(
+            status="degraded",
+            services={},
+            collection_exists=False,
+            collection_count=None,
+            kb_available=False,
         )
 
 
 @app.get("/capabilities", response_model=CapabilitiesResponse)
 async def get_capabilities():
     """Get search capabilities of the current setup."""
+    if pipeline is None:
+        return CapabilitiesResponse(
+            semantic_search=False,
+            exact_phrase_search=False,
+            hybrid_search=False,
+            native_fusion=False,
+            sparse_vectors_enabled=False,
+        )
     try:
         caps = pipeline.search_service.get_capabilities()
         return CapabilitiesResponse(**caps)
@@ -368,11 +390,12 @@ async def get_stages():
 
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
-    """
-    Search the knowledge base with the given query.
-
-    Returns relevant document chunks with scores and metadata.
-    """
+    """Search the knowledge base with the given query."""
+    if pipeline is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Knowledge base is not available. Start the KB stack with: docker compose -f docker-compose.kb.yml up -d",
+        )
     try:
         logger.info(f"Search request: query='{request.query}', strategy={request.strategy}, limit={request.limit}")
 
@@ -494,26 +517,30 @@ async def chat(request: ChatRequest):
     system_prompt = build_system_prompt(request.system_prompt)
 
     try:
-        logger.info(f"Chat request: message='{request.message[:100]}...', use_gemini={request.use_gemini}")
+        logger.info(f"Chat request: message='{request.message[:100]}...', use_gemini={request.use_gemini}, kb={'yes' if pipeline else 'no'}")
 
-        # Search for relevant context
-        results = pipeline.search_service.search_auto(
-            request.message,
-            request.search_limit,
-            score_threshold=None,
-        )
+        # Search knowledge base when available
+        results = []
+        context = ""
+        sources = []
+        if pipeline is not None:
+            try:
+                results = pipeline.search_service.search_auto(
+                    request.message,
+                    request.search_limit,
+                    score_threshold=None,
+                )
+                context = "\n\n".join(
+                    r.get("payload", {}).get("chunk_text", "") for r in results
+                )
+                sources = format_sources(results)
+            except Exception as kb_err:
+                logger.warning(f"KB search failed, proceeding without context: {kb_err}")
 
-        # Build context
-        context_parts = []
-        for result in results:
-            payload = result.get("payload", {})
-            context_parts.append(payload.get("chunk_text", ""))
-
-        context = "\n\n".join(context_parts)
-        sources = format_sources(results)
-
-        # Generate response
-        if request.use_gemini and context:
+        # Generate response — context is empty string when KB is absent,
+        # so generate_gemini_response sends the message directly to Gemini
+        # with only the agent system prompt attached.
+        if request.use_gemini:
             response_text = await generate_gemini_response(
                 request.message,
                 context,
@@ -522,11 +549,11 @@ async def chat(request: ChatRequest):
                 system_prompt=system_prompt,
             )
         else:
-            # Simple fallback response
-            if context:
-                response_text = f"I found {len(results)} relevant sources in the knowledge base. Here's what I found:\n\n{context[:500]}..."
-            else:
-                response_text = "I couldn't find relevant information in the knowledge base to answer your question."
+            response_text = (
+                f"I found {len(results)} relevant sources in the knowledge base.\n\n{context[:500]}..."
+                if context
+                else "Gemini is disabled and no knowledge base context is available."
+            )
 
         logger.info(f"Chat completed: {len(results)} context chunks used")
 

@@ -179,6 +179,8 @@ class QdrantVectorStore(VectorStore):
             self.logger.error(f"Error getting collection info: {e}")
             return None
 
+    _UPSERT_BATCH_SIZE = 100
+
     def insert_documents(self, chunks, embeddings: List[List[float]]) -> bool:
         """Insert document chunks with their embeddings into Qdrant."""
         if len(chunks) != len(embeddings):
@@ -200,7 +202,6 @@ class QdrantVectorStore(VectorStore):
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
                 payload = {
                     "chunk_text": chunk.chunk_text,
-                    "original_text": chunk.original_text,
                     "source_url": chunk.metadata.source_url,
                     "file_extension": chunk.metadata.file_extension,
                     "file_size": chunk.metadata.file_size,
@@ -238,19 +239,17 @@ class QdrantVectorStore(VectorStore):
                 )
                 points.append(point)
 
-            # Insert points
-            self.client.upsert(
-                collection_name=self.config.collection_name, points=points
-            )
+            # Insert points in batches to stay under Qdrant's 32 MB payload limit
+            for batch_start in range(0, len(points), self._UPSERT_BATCH_SIZE):
+                batch = points[batch_start : batch_start + self._UPSERT_BATCH_SIZE]
+                self.client.upsert(
+                    collection_name=self.config.collection_name, points=batch
+                )
 
-            if self.supports_sparse_vectors():
-                self.logger.info(
-                    f"Inserted {len(chunks)} chunks with dense and sparse vectors successfully"
-                )
-            else:
-                self.logger.info(
-                    f"Inserted {len(chunks)} chunks with dense vectors successfully"
-                )
+            vector_type = "dense and sparse" if self.supports_sparse_vectors() else "dense"
+            self.logger.info(
+                f"Inserted {len(chunks)} chunks with {vector_type} vectors successfully"
+            )
             return True
 
         except Exception as e:
