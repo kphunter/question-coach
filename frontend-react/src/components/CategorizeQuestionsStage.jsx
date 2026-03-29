@@ -111,10 +111,12 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
         onDragEnd={handleDragEnd}
         sensors={sensors}
       >
-        <div className="categorize-grid">
+        <div className="categorize-wrap">
           <DroppableColumn id="unassigned" title="Unsorted" items={grouped.unassigned} onQuestionClick={onQuestionClick} />
-          <DroppableColumn id="open" title="Open" items={grouped.open} onQuestionClick={onQuestionClick} />
-          <DroppableColumn id="closed" title="Closed" items={grouped.closed} onQuestionClick={onQuestionClick} />
+          <div className="categorize-grid">
+            <DroppableColumn id="open" title="Open" items={grouped.open} onQuestionClick={onQuestionClick} />
+            <DroppableColumn id="closed" title="Closed" items={grouped.closed} onQuestionClick={onQuestionClick} />
+          </div>
         </div>
         <DragOverlay>
           {activeQuestion ? <div className="question-chip overlay">{activeQuestion.text}</div> : null}

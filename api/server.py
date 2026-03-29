@@ -105,9 +105,14 @@ app = FastAPI(
 )
 
 # Configure CORS
+# ALLOWED_ORIGINS is a comma-separated list of allowed origins.
+# Defaults to localhost ports used in local development.
+_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")
+_allowed_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -7,56 +7,75 @@ import { uid } from "./utils";
 const QFT_STEPS = [
   {
     number: 1,
-    title: "Develop a Question Focus",
+    title: "Focus",
     body: "A statement, image, or scenario can spark curiosity without dictating a direction.",
   },
   {
     number: 2,
-    title: "Produce Questions",
+    title: "Produce",
     body: "Generate as many questions as you can. Don't stop to judge or answer, write every question as asked, and change any statements into questions.",
   },
   {
     number: 3,
-    title: "Categorize Questions",
-    body: "Label each question as open-ended (requires explanation, discussion, or exploration) or closed (can be answered with a single word or fact).",
+    title: "Improve",
+    body: "Label each question as open-ended (requires explanation, discussion, or exploration) or closed (can be answered with a single word or fact). Practice converting between types and reflecting on the qualities of each type.",
   },
   {
     number: 4,
-    title: "Improve Questions",
-    body: "Practice converting between types and reflecting on the qualities of each type.",
-  },
-  {
-    number: 5,
-    title: "Prioritize Questions",
+    title: "Prioritize",
     body: "Choose your most important questions based on a defined set of criteria.",
   },
   {
-    number: 6,
-    title: "Discuss Next Steps",
+    number: 5,
+    title: "Discuss",
     body: "What comes next? Research, writing, an experiment, a conversation, or another stage of inquiry?",
   },
   {
-    number: 7,
-    title: "Reflect on QFT",
+    number: 6,
+    title: "Reflect",
     body: "Look back at the process itself. What changed in your thinking? Which step helped you most? How might you use the QFT in future?",
   },
 ];
 
 function QFTInfoPanel() {
+  const [openSteps, setOpenSteps] = useState(() => new Set([1]));
   return (
     <div className="qft-info-panel">
       <div className="qft-info-header">
         <span className="qft-info-title">
-          The Question Formulation Technique
+          What is the Question Formulation Technique (QFT)?
         </span>
       </div>
       <ol className="qft-steps">
-        {QFT_STEPS.map((step) => (
-          <li key={step.number} className="qft-step">
-            <div className="qft-step-title">{step.title}</div>
-            <div className="qft-step-body">{step.body}</div>
-          </li>
-        ))}
+        {QFT_STEPS.map((step) => {
+          const isOpen = openSteps.has(step.number);
+          return (
+            <li
+              key={step.number}
+              className={`qft-step${isOpen ? " open" : ""}`}
+            >
+              <button
+                className="qft-step-btn"
+                onClick={() =>
+                  setOpenSteps((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(step.number)) next.delete(step.number);
+                    else next.add(step.number);
+                    return next;
+                  })
+                }
+                type="button"
+              >
+                <span className="qft-step-num">{step.number}</span>
+                <span className="qft-step-title">{step.title}</span>
+                <span className="material-symbols-rounded qft-chevron">
+                  {isOpen ? "expand_less" : "expand_more"}
+                </span>
+              </button>
+              {isOpen && <div className="qft-step-body">{step.body}</div>}
+            </li>
+          );
+        })}
       </ol>
     </div>
   );
@@ -106,8 +125,7 @@ const defaultSettings = {
 };
 
 function buildApiBase() {
-  if (window.location.hostname === "localhost") return "http://localhost:8000";
-  return `${window.location.protocol}//${window.location.hostname}:8000`;
+  return import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 }
 
 /** @returns {import('./stages').SharedMemory} */
@@ -121,6 +139,35 @@ function initialMemory() {
   };
 }
 
+/** Delay between sequential intro message bubbles, in milliseconds. */
+const INTRO_DELAY_MS = 4000;
+
+function hasStoredChat(stageId) {
+  try {
+    return localStorage.getItem(`qc-chat-${stageId}`) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function loadStageChat(stageId, defaultMessages) {
+  try {
+    const raw = localStorage.getItem(`qc-chat-${stageId}`);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore parse errors
+  }
+  return defaultMessages;
+}
+
+function saveStageChat(stageId, msgs) {
+  try {
+    localStorage.setItem(`qc-chat-${stageId}`, JSON.stringify(msgs));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export default function App() {
   const API = useMemo(buildApiBase, []);
 
@@ -131,81 +178,82 @@ export default function App() {
   // ── UI state ───────────────────────────────────────────────────────────────
   const [isConnected, setIsConnected] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [draftText, setDraftText] = useState("");
   const [stagePrompts, setStagePrompts] = useState({});
   const [statusText, setStatusText] = useState("Connecting…");
   const [snackbar, setSnackbar] = useState("");
-  const [messages, setMessages] = useState(() => [
-    {
+  const [messages, setMessages] = useState(() => {
+    const s0 = stages[0];
+    const firstText =
+      s0.messageParts?.[0] ??
+      `**${s0.heading}**\n\n${s0.description}\n\n${s0.instruction}`;
+    const defaultMsg = {
       id: uid(),
       role: "assistant",
-      text: `**${stages[0].heading}**\n\n${stages[0].description}\n\n${stages[0].instruction}`,
+      text: firstText,
       stageIndex: 0,
       isCoach: true,
       createdAt: new Date().toISOString(),
-    },
-  ]);
-  const [settings, setSettings] = useState(defaultSettings);
+    };
+    return loadStageChat(s0.id, [defaultMsg]);
+  });
+  const [settings] = useState(defaultSettings);
+  const [showFinishModal, setShowFinishModal] = useState(false);
 
   const stage = stages[stageIndex];
   const hasWorkspace = stage.inputType !== "textarea";
   const hasInfoPanel = stage.id === "question-focus" || stage.id === "reflect";
 
-  const chatAreaRef = useRef(null);
-  const chatBottomRef = useRef(null);
-  const pendingScrollToTopId = useRef(null);
-  const [chatSpacerHeight, setChatSpacerHeight] = useState(0);
+  const messagesRef = useRef(null);
+  const introTimers = useRef([]);
+  // Track whether stage 0 was a fresh (first-visit) load before messages were saved
+  const initialWasFresh = useRef(!hasStoredChat(stages[0].id));
 
-  // ── Keep spacer = 60% of container height — enough for any instruction bubble to reach the top
-  useEffect(() => {
-    const container = chatAreaRef.current;
-    if (!container) return;
-    const update = () =>
-      setChatSpacerHeight(Math.round(container.clientHeight * 0.6));
-    const observer = new ResizeObserver(update);
-    observer.observe(container);
-    update();
-    return () => observer.disconnect();
-  }, []);
+  function clearIntroTimers() {
+    introTimers.current.forEach(clearTimeout);
+    introTimers.current = [];
+  }
 
-  // ── Scroll: pin new stage instruction to top; scroll down only when content overflows
-  useEffect(() => {
-    const container = chatAreaRef.current;
-    if (!container) return;
-
-    if (pendingScrollToTopId.current) {
-      const el = container.querySelector(
-        `[data-msg-id="${pendingScrollToTopId.current}"]`,
+  function scheduleIntroParts(parts, stageIdx, delayMs) {
+    parts.slice(1).forEach((text, i) => {
+      const id = setTimeout(
+        () => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: uid(),
+              role: "assistant",
+              text,
+              stageIndex: stageIdx,
+              isCoach: true,
+              createdAt: new Date().toISOString(),
+            },
+          ]);
+        },
+        delayMs * (i + 1),
       );
-      if (el) {
-        pendingScrollToTopId.current = null;
-        const CHAT_PADDING = 18;
-        const relativeTop =
-          el.getBoundingClientRect().top -
-          container.getBoundingClientRect().top;
-        container.scrollTo({
-          top: container.scrollTop + relativeTop - CHAT_PADDING,
-          behavior: "smooth",
-        });
-        return;
-      }
-    }
+      introTimers.current.push(id);
+    });
+  }
 
-    // Only scroll down if the bottom sentinel has gone below the visible area
-    const bottomEl = chatBottomRef.current;
-    if (bottomEl) {
-      const overflow =
-        bottomEl.getBoundingClientRect().bottom -
-        container.getBoundingClientRect().bottom;
-      if (overflow > 0) {
-        container.scrollTo({
-          top: container.scrollTop + overflow,
-          behavior: "smooth",
-        });
-      }
-    }
+  // ── Scroll to bottom when messages change ─────────────────────────────────
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, isProcessing]);
+
+  // ── Schedule delayed intro parts for stage 0 on first visit ──────────────
+  useEffect(() => {
+    if (initialWasFresh.current && stages[0].messageParts?.length > 1) {
+      scheduleIntroParts(stages[0].messageParts, 0, INTRO_DELAY_MS);
+    }
+    return () => clearIntroTimers();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Persist current stage chat to localStorage ────────────────────────────
+  useEffect(() => {
+    saveStageChat(stage.id, messages);
+  }, [messages, stage.id]);
 
   // ── Reset draft when changing stages ──────────────────────────────────────
   useEffect(() => {
@@ -241,11 +289,7 @@ export default function App() {
         setIsConnected(ok);
         if (ok) {
           const count = data.collection_count;
-          setStatusText(
-            count != null
-              ? `Connected · ${count} vectors indexed`
-              : "Connected",
-          );
+          setStatusText(count != null ? `${count} vectors indexed` : "");
         } else {
           setStatusText("Disconnected — check API server");
         }
@@ -283,28 +327,30 @@ export default function App() {
   function goToStage(nextIndex) {
     if (nextIndex < 0 || nextIndex >= stages.length || nextIndex === stageIndex)
       return;
-    const dir = nextIndex > stageIndex ? 1 : -1;
+
+    clearIntroTimers();
+    saveStageChat(stage.id, messages);
+
     const next = stages[nextIndex];
-    setStageIndex(nextIndex);
-    pushMessage({
+    const isFresh = !hasStoredChat(next.id);
+    const firstText =
+      next.messageParts?.[0] ??
+      `**${next.heading}**\n\n${next.description}\n\n${next.instruction}`;
+    const defaultMsg = {
+      id: uid(),
       role: "assistant",
-      text: `${dir > 0 ? "Moving to" : "Back to"} ${next.heading}`,
-      stageIndex: nextIndex,
-      isMarker: true,
-    });
-    const instructionId = uid();
-    pendingScrollToTopId.current = instructionId;
-    pushMessage({
-      id: instructionId,
-      role: "assistant",
-      text: `**${next.heading}**\n\n${next.description}\n\n${next.instruction}`,
+      text: firstText,
       stageIndex: nextIndex,
       isCoach: true,
-    });
-  }
+      createdAt: new Date().toISOString(),
+    };
 
-  function updateSettings(name, value) {
-    setSettings((prev) => ({ ...prev, [name]: value }));
+    setStageIndex(nextIndex);
+    setMessages(loadStageChat(next.id, [defaultMsg]));
+
+    if (isFresh && next.messageParts?.length > 1) {
+      scheduleIntroParts(next.messageParts, nextIndex, INTRO_DELAY_MS);
+    }
   }
 
   /** Called by stage components on every live edit — merges into shared memory. */
@@ -342,11 +388,40 @@ export default function App() {
         throw new Error(detail);
       }
       const data = await response.json();
+      const parts = data.response
+        .split("\n\n")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const sources = data.sources || [];
+
+      // First part appears immediately
       pushMessage({
         role: "assistant",
-        text: data.response,
-        sources: data.sources || [],
+        text: parts[0] ?? data.response,
+        sources: parts.length <= 1 ? sources : [],
         stageIndex,
+      });
+
+      // Remaining parts arrive with a delay
+      parts.slice(1).forEach((text, i) => {
+        const isLast = i === parts.length - 2;
+        const id = setTimeout(
+          () => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: uid(),
+                role: "assistant",
+                text,
+                sources: isLast ? sources : [],
+                stageIndex,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+          },
+          INTRO_DELAY_MS * (i + 1),
+        );
+        introTimers.current.push(id);
       });
     } catch (error) {
       pushMessage({
@@ -371,6 +446,31 @@ export default function App() {
     sendToBackend(text);
   }
 
+  /** Clear all stage chats from localStorage and restart from stage 1. */
+  function handleReset() {
+    if (!window.confirm("Clear all chat history and start over?")) return;
+    clearIntroTimers();
+    stages.forEach((s) => localStorage.removeItem(`qc-chat-${s.id}`));
+    const s0 = stages[0];
+    const firstText =
+      s0.messageParts?.[0] ??
+      `**${s0.heading}**\n\n${s0.description}\n\n${s0.instruction}`;
+    const defaultMsg = {
+      id: uid(),
+      role: "assistant",
+      text: firstText,
+      stageIndex: 0,
+      isCoach: true,
+      createdAt: new Date().toISOString(),
+    };
+    setStageIndex(0);
+    setMessages([defaultMsg]);
+    setMemory(initialMemory());
+    if (s0.messageParts?.length > 1) {
+      scheduleIntroParts(s0.messageParts, 0, INTRO_DELAY_MS);
+    }
+  }
+
   /** Submit serialized stage data (questions / classifications / priorities). */
   function handleSubmitStage() {
     const text = stage.serialize(memory, draftText);
@@ -380,6 +480,94 @@ export default function App() {
     }
     sendToBackend(text);
   }
+
+  function generateSessionMarkdown() {
+    const lines = ["# Question Coach — Session Summary", ""];
+    const filled = memory.questions.filter((q) => q.text.trim());
+
+    stages.forEach((s, idx) => {
+      lines.push(`## Stage ${s.number}: ${s.name}`, "");
+
+      // Workspace output per stage
+      if (s.id === "produce-questions" && filled.length) {
+        lines.push("### Questions", "");
+        filled.forEach((q, i) => lines.push(`${i + 1}. ${q.text.trim()}`));
+        lines.push("");
+      }
+      if (s.id === "improve-questions" && filled.length) {
+        const open = filled.filter(
+          (q) => memory.classifications[q.id] === "open",
+        );
+        const closed = filled.filter(
+          (q) => memory.classifications[q.id] === "closed",
+        );
+        const unsorted = filled.filter((q) => !memory.classifications[q.id]);
+        lines.push("### Classifications", "");
+        lines.push("**Open questions:**");
+        (open.length ? open : []).forEach((q, i) =>
+          lines.push(`${i + 1}. ${q.text}`),
+        );
+        if (!open.length) lines.push("*(none)*");
+        lines.push("");
+        lines.push("**Closed questions:**");
+        (closed.length ? closed : []).forEach((q, i) =>
+          lines.push(`${i + 1}. ${q.text}`),
+        );
+        if (!closed.length) lines.push("*(none)*");
+        lines.push("");
+        if (unsorted.length) {
+          lines.push("**Unsorted:**");
+          unsorted.forEach((q, i) => lines.push(`${i + 1}. ${q.text}`));
+          lines.push("");
+        }
+      }
+      if (s.id === "prioritize-questions" && filled.length) {
+        const starredSet = new Set(memory.starred ?? []);
+        const ranked = memory.priorities
+          .map((id) => filled.find((q) => q.id === id))
+          .filter(Boolean);
+        lines.push("### Priority Ranking", "");
+        ranked.forEach((q, i) =>
+          lines.push(`${i + 1}. ${starredSet.has(q.id) ? "★ " : ""}${q.text}`),
+        );
+        lines.push("");
+      }
+
+      // Chat history for this stage
+      let chat;
+      try {
+        const raw = localStorage.getItem(`qc-chat-${s.id}`);
+        chat = raw ? JSON.parse(raw) : idx === stageIndex ? messages : [];
+      } catch {
+        chat = idx === stageIndex ? messages : [];
+      }
+      if (chat.length) {
+        lines.push("### Chat", "");
+        chat.forEach((msg) => {
+          const who = msg.role === "user" ? "**You**" : "**Coach**";
+          lines.push(`${who}: ${msg.text}`, "");
+        });
+      }
+    });
+
+    return lines.join("\n");
+  }
+
+  function downloadMarkdown() {
+    const md = generateSessionMarkdown();
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "question-coach-session.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const hintParts = [
+    statusText,
+    "Enter to send · Shift+Enter for new line",
+  ].filter(Boolean);
 
   return (
     <div className="app-shell">
@@ -396,9 +584,8 @@ export default function App() {
           />
         </div>
 
-        <div className="stage-pips-wrap" aria-label="Stage progress">
-          <span className="stage-pips-label">Stages</span>
-          <div className="stage-pips">
+        <div className="app-bar-trailing">
+          <div className="stage-pips" aria-label="Stage progress">
             {stages.map((item, index) => {
               const state =
                 index < stageIndex
@@ -427,147 +614,38 @@ export default function App() {
               );
             })}
           </div>
-        </div>
-
-        <div className="app-bar-actions">
           <button
-            className="md-text-btn"
-            onClick={() => goToStage(stageIndex - 1)}
-            disabled={stageIndex === 0}
+            className="icon-btn"
+            title="Reset all chats"
+            onClick={handleReset}
             type="button"
           >
-            <span className="material-symbols-rounded mini-icon">
-              arrow_back
-            </span>
-            Back
+            <span className="material-symbols-rounded">restart_alt</span>
           </button>
-          <button
-            className="md-tonal-btn"
-            onClick={() => goToStage(stageIndex + 1)}
-            disabled={stageIndex === stages.length - 1}
-            type="button"
-          >
-            Next stage
-            <span className="material-symbols-rounded mini-icon">
-              arrow_forward
-            </span>
-          </button>
-          <button
-            className={`icon-btn ${settingsOpen ? "active" : ""}`}
-            title="Settings"
-            onClick={() => setSettingsOpen((prev) => !prev)}
-            type="button"
-          >
-            <span className="material-symbols-rounded">settings</span>
-          </button>
-
-          {settingsOpen && (
-            <div className="settings-panel open">
-              <div className="settings-row">
-                <div>
-                  <div className="settings-row-label">AI Responses</div>
-                  <div className="settings-row-sub">
-                    Generate a response using Gemini
-                  </div>
-                </div>
-                <label className="switch-label">
-                  <span className="md-switch">
-                    <input
-                      type="checkbox"
-                      id="geminiToggle"
-                      checked={settings.use_gemini}
-                      onChange={(event) =>
-                        updateSettings("use_gemini", event.target.checked)
-                      }
-                    />
-                    <span className="switch-track" />
-                    <span className="switch-thumb" />
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-divider" />
-
-              <div className="settings-row">
-                <div>
-                  <div className="settings-row-label">Search strategy</div>
-                  <div className="settings-row-sub">
-                    How the knowledge base is queried
-                  </div>
-                </div>
-                <select
-                  className="md-select"
-                  id="searchStrategy"
-                  value={settings.search_strategy}
-                  onChange={(event) =>
-                    updateSettings("search_strategy", event.target.value)
-                  }
-                >
-                  <option value="auto">Auto</option>
-                  <option value="semantic">Semantic</option>
-                  <option value="exact">Exact</option>
-                  <option value="hybrid_rrf">Hybrid</option>
-                </select>
-              </div>
-
-              <div className="settings-row">
-                <div>
-                  <div className="settings-row-label">Sources returned</div>
-                  <div className="settings-row-sub">
-                    Number of knowledge base chunks
-                  </div>
-                </div>
-                <select
-                  className="md-select"
-                  id="searchLimit"
-                  value={String(settings.search_limit)}
-                  onChange={(event) =>
-                    updateSettings("search_limit", Number(event.target.value))
-                  }
-                >
-                  <option value="3">3</option>
-                  <option value="5">5</option>
-                  <option value="7">7</option>
-                </select>
-              </div>
-            </div>
-          )}
         </div>
       </header>
 
       {/* ── Content ────────────────────────────────────────────────────── */}
-      <main
-        className={`content-grid ${hasWorkspace ? "has-workspace" : ""}${hasInfoPanel ? " has-info-panel" : ""}`}
-      >
-        <section className="chat-area" ref={chatAreaRef}>
-          <div className="welcome-card">
-            <h2>Welcome!</h2>
-            <p>
-              This is a place to help get you started with refining your
-              research question.
-            </p>
-          </div>
+      <main className="content-grid">
+        {/* Chat column — messages + input in one frame */}
+        <section className="chat-column">
+          <div className="chat-messages" ref={messagesRef}>
+            {stageIndex === 0 && (
+              <div className="welcome-card">
+                <h2>Welcome!</h2>
+                <p>
+                  This is a place to help get you started with refining your
+                  research question.
+                </p>
+              </div>
+            )}
 
-          {messages.map((message) => {
-            if (message.isMarker) {
-              return (
-                <div className="stage-marker" key={message.id}>
-                  <span className="material-symbols-rounded">
-                    compare_arrows
-                  </span>
-                  <span className="stage-marker-text">{message.text}</span>
-                </div>
-              );
-            }
-            return (
+            {messages.map((message) => (
               <div
                 className={`msg-row ${message.role}`}
                 key={message.id}
                 data-msg-id={message.id}
               >
-                <div className={`msg-avatar ${message.role}`}>
-                  {message.role === "user" ? "You" : "QC"}
-                </div>
                 <div className="msg-body">
                   <div className="msg-bubble">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -585,86 +663,149 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            );
-          })}
+            ))}
 
-          {isProcessing && (
-            <div className="msg-row assistant">
-              <div className="msg-avatar assistant">QC</div>
-              <div className="msg-body">
-                <div className="typing-bubble">
-                  <div className="t-dot" />
-                  <div className="t-dot" />
-                  <div className="t-dot" />
+            {isProcessing && (
+              <div className="msg-row assistant">
+                <div className="msg-body">
+                  <div className="typing-bubble">
+                    <div className="t-dot" />
+                    <div className="t-dot" />
+                    <div className="t-dot" />
+                  </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Input — always at bottom of chat frame */}
+          <div className="chat-input-area">
+            <div className="input-row">
+              <div className="input-field-wrap">
+                <textarea
+                  className="md-textarea"
+                  id="msgInput"
+                  placeholder={stage.placeholder}
+                  value={draftText}
+                  onChange={(event) => setDraftText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      handleSendChat();
+                    }
+                  }}
+                />
+              </div>
+              <button
+                className="send-fab"
+                id="sendBtn"
+                disabled={!isConnected || isProcessing}
+                title="Send"
+                onClick={handleSendChat}
+                type="button"
+              >
+                <span className="material-symbols-rounded">send</span>
+              </button>
             </div>
-          )}
-          <div ref={chatBottomRef} />
-          <div
-            style={{ height: chatSpacerHeight, flexShrink: 0 }}
-            aria-hidden="true"
-          />
+            <div className="input-hint">{hintParts.join(" · ")}</div>
+          </div>
         </section>
 
-        {hasInfoPanel && (
-          <aside className="stage-panel">
-            <div className="panel-card">
-              <QFTInfoPanel />
+        {/* Right panel — always present on all stages */}
+        <aside className="stage-panel">
+          <div className="panel-card">
+            <div className="panel-content">
+              {hasInfoPanel && <QFTInfoPanel />}
+              {hasWorkspace && (
+                <stage.Component
+                  input={stage.input(memory)}
+                  onSubmit={handleStageResult}
+                  onSend={handleSubmitStage}
+                  {...(stage.inputType === "categorize" && {
+                    onQuestionClick: (text) => setDraftText(text),
+                  })}
+                />
+              )}
             </div>
-          </aside>
-        )}
-
-        {hasWorkspace && (
-          <aside className="stage-panel">
-            <div className="panel-card">
-              <stage.Component
-                input={stage.input(memory)}
-                onSubmit={handleStageResult}
-                onSend={handleSubmitStage}
-                {...(stage.inputType === "categorize" && {
-                  onQuestionClick: (text) => setDraftText(text),
-                })}
-              />
+            <div className="panel-nav">
+              <button
+                className="md-text-btn"
+                onClick={() => goToStage(stageIndex - 1)}
+                disabled={stageIndex === 0}
+                type="button"
+              >
+                <span className="material-symbols-rounded mini-icon">
+                  arrow_back
+                </span>
+                Back
+              </button>
+              {stageIndex === stages.length - 1 ? (
+                <button
+                  className="md-tonal-btn"
+                  onClick={() => setShowFinishModal(true)}
+                  type="button"
+                >
+                  Finish
+                  <span className="material-symbols-rounded mini-icon">
+                    check
+                  </span>
+                </button>
+              ) : (
+                <button
+                  className="md-tonal-btn"
+                  onClick={() => goToStage(stageIndex + 1)}
+                  type="button"
+                >
+                  Next stage
+                  <span className="material-symbols-rounded mini-icon">
+                    arrow_forward
+                  </span>
+                </button>
+              )}
             </div>
-          </aside>
-        )}
+          </div>
+        </aside>
       </main>
 
-      {/* ── Footer — always-visible chat input ─────────────────────────── */}
-      <footer className="input-area">
-        <div className="input-row">
-          <div className="input-field-wrap">
-            <textarea
-              className="md-textarea"
-              id="msgInput"
-              rows="1"
-              placeholder={stage.placeholder}
-              value={draftText}
-              onChange={(event) => setDraftText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  handleSendChat();
-                }
-              }}
-            />
+      {showFinishModal && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowFinishModal(false)}
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="material-symbols-rounded modal-icon">
+                celebration
+              </span>
+              <h2 className="modal-title">Well done!</h2>
+            </div>
+            <p className="modal-body">
+              You've completed all six stages of the Question Formulation
+              Technique. Download a summary of your session — including your
+              chat history and question workspace — as a Markdown file.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="md-tonal-btn"
+                onClick={downloadMarkdown}
+                type="button"
+              >
+                <span className="material-symbols-rounded mini-icon">
+                  download
+                </span>
+                Download session
+              </button>
+              <button
+                className="md-text-btn"
+                onClick={() => setShowFinishModal(false)}
+                type="button"
+              >
+                Close
+              </button>
+            </div>
           </div>
-          <button
-            className="send-fab"
-            id="sendBtn"
-            disabled={!isConnected || isProcessing}
-            title="Send"
-            onClick={handleSendChat}
-            type="button"
-          >
-            <span className="material-symbols-rounded">send</span>
-          </button>
         </div>
-        <div className="input-hint">
-          {statusText} · Enter to send · Shift+Enter for new line
-        </div>
-      </footer>
+      )}
 
       <div className={`snackbar ${snackbar ? "show" : ""}`}>{snackbar}</div>
     </div>

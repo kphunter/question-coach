@@ -10,6 +10,7 @@ services:
     container_name: rag-api
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY:?export GEMINI_API_KEY in your shell before running docker compose}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - QDRANT_HOST=qdrant
       - OLLAMA_BASE_URL=http://ollama:11434
     ports:
@@ -28,29 +29,23 @@ services:
       - rag-network
     restart: unless-stopped
 
-  # Frontend (React + Vite, served via Nginx)
-  frontend:
-    build:
-      context: ./frontend-react
-      dockerfile: Dockerfile
-    container_name: rag-frontend
+  # Caddy — TLS termination and reverse proxy for the API
+  # CADDY_HOST is set in .env on the server (e.g. 5-161-100-200.sslip.io)
+  caddy:
+    image: caddy:2-alpine
+    container_name: rag-caddy
     ports:
-      - "3000:80"
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - CADDY_HOST=${CADDY_HOST:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - api
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1/health",
-        ]
-      interval: 30s
-      timeout: 3s
-      retries: 3
     networks:
       - rag-network
     restart: unless-stopped
@@ -58,3 +53,7 @@ services:
 networks:
   rag-network:
     driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
