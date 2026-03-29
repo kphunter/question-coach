@@ -27,9 +27,29 @@ services:
       - rag-network
     restart: unless-stopped
 
+  # Vite dev server — local development only
+  # Not used in production (frontend is deployed to GitHub Pages)
+  frontend:
+    image: node:20-alpine
+    container_name: rag-frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend-react:/app
+      - /app/node_modules
+    networks:
+      - rag-network
+    depends_on:
+      - api
+
   # Caddy — TLS termination and reverse proxy for the API
   # CADDY_HOST is set in .env on the server (e.g. 5-161-100-200.sslip.io)
   caddy:
+    profiles: [production]
     image: caddy:2-alpine
     container_name: rag-caddy
     ports:

@@ -585,6 +585,15 @@ export default function App() {
         </div>
 
         <div className="app-bar-trailing">
+          <a
+            className="md-text-btn app-bar-kb-link"
+            href="https://etec51165a-knowledgebase-aicoach.figma.site/"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            <span className="material-symbols-rounded mini-icon">menu_book</span>
+            Knowledge Base
+          </a>
           <div className="stage-pips" aria-label="Stage progress">
             {stages.map((item, index) => {
               const state =
@@ -685,8 +694,9 @@ export default function App() {
                 <textarea
                   className="md-textarea"
                   id="msgInput"
-                  placeholder={stage.placeholder}
+                  placeholder={isConnected ? stage.placeholder : "Waiting for API connection…"}
                   value={draftText}
+                  disabled={!isConnected || isProcessing}
                   onChange={(event) => setDraftText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
@@ -794,6 +804,16 @@ export default function App() {
                   download
                 </span>
                 Download session
+              </button>
+              <button
+                className="md-text-btn"
+                onClick={() => { setShowFinishModal(false); handleReset(); }}
+                type="button"
+              >
+                <span className="material-symbols-rounded mini-icon">
+                  restart_alt
+                </span>
+                Start over
               </button>
               <button
                 className="md-text-btn"

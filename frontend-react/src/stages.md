@@ -15,8 +15,6 @@ Let's start. Do you have a question focus, or do you need to develop one? Tell m
 
 ### Message 1
 
-**Stage 1 · Question Area of Focus**
-
 Use the Question Formulation Technique (QFT) to develop and refine your research question.
 
 ### Message 2

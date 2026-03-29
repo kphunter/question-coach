@@ -73,6 +73,12 @@ button, input, select, textarea { font: inherit; }
   gap: 8px;
 }
 
+.app-bar-kb-link {
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .stage-pips {
   display: flex;
   align-items: center;
