@@ -38,11 +38,29 @@ function DroppableColumn({ id, title, items, onQuestionClick }) {
             key={question.id}
             id={question.id}
             text={question.text}
-            badge={id === 'unassigned' ? '' : id}
+            badge={id}
             onQuestionClick={onQuestionClick}
           />
         ))}
       </div>
+    </div>
+  )
+}
+
+function UnassignedList({ items, onQuestionClick }) {
+  const { setNodeRef } = useDroppable({ id: 'unassigned' })
+
+  return (
+    <div className="unassigned-list" ref={setNodeRef}>
+      {items.map((question) => (
+        <DraggableQuestion
+          key={question.id}
+          id={question.id}
+          text={question.text}
+          badge=""
+          onQuestionClick={onQuestionClick}
+        />
+      ))}
     </div>
   )
 }
@@ -105,6 +123,13 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
         </p>
       </div>
 
+      <div className="stage-actions">
+        <button className="md-tonal-btn" onClick={() => { setSubmitted(true); onSend() }} type="button">
+          {submitted ? 'Resubmit classifications' : 'Submit classifications'}
+          <span className="material-symbols-rounded mini-icon">send</span>
+        </button>
+      </div>
+
       <DndContext
         collisionDetection={closestCenter}
         onDragStart={(event) => setActiveId(String(event.active.id))}
@@ -112,23 +137,16 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
         sensors={sensors}
       >
         <div className="categorize-wrap">
-          <DroppableColumn id="unassigned" title="Unsorted" items={grouped.unassigned} onQuestionClick={onQuestionClick} />
           <div className="categorize-grid">
             <DroppableColumn id="open" title="Open" items={grouped.open} onQuestionClick={onQuestionClick} />
             <DroppableColumn id="closed" title="Closed" items={grouped.closed} onQuestionClick={onQuestionClick} />
           </div>
+          <UnassignedList items={grouped.unassigned} onQuestionClick={onQuestionClick} />
         </div>
         <DragOverlay>
           {activeQuestion ? <div className="question-chip overlay">{activeQuestion.text}</div> : null}
         </DragOverlay>
       </DndContext>
-
-      <div className="stage-actions">
-        <button className="md-tonal-btn" onClick={() => { setSubmitted(true); onSend() }} type="button">
-          {submitted ? 'Resubmit classifications' : 'Submit classifications'}
-          <span className="material-symbols-rounded mini-icon">send</span>
-        </button>
-      </div>
     </div>
   )
 }

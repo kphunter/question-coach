@@ -7,7 +7,7 @@ import PrioritizeQuestionsStage from "./components/PrioritizeQuestionsStage";
 /**
  * @typedef {{ id: string, text: string }} Question
  * @typedef {{ questions: Question[], classifications: Record<string, 'open'|'closed'>, priorities: string[], stageNotes: Record<string, string> }} SharedMemory
- * @typedef {{ id: string, number: number, name: string, icon: string, heading: string, description: string, instruction: string, placeholder: string, inputType: 'textarea'|'question-list'|'categorize'|'prioritize', input: (memory: SharedMemory) => any, output: (result: any, memory: SharedMemory) => SharedMemory, serialize: (memory: SharedMemory, draftText?: string) => string, Component: import('react').ComponentType<any> }} Stage
+ * @typedef {{ id: string, number: number, name: string, heading: string, instruction: string, placeholder: string, inputType: 'textarea'|'question-list'|'categorize'|'prioritize', input: (memory: SharedMemory) => any, output: (result: any, memory: SharedMemory) => SharedMemory, serialize: (memory: SharedMemory, draftText?: string) => string, Component: import('react').ComponentType<any> }} Stage
  */
 
 // ── Markdown content parser ────────────────────────────────────────────────
@@ -60,11 +60,9 @@ function parseStagesMarkdown(raw) {
     return {
       id: meta.id,
       number: i + 1,
-      icon: meta.icon ?? '',
       heading: meta.heading ?? '',
       placeholder: meta.placeholder ?? '',
       name,
-      description: subsections['Description'] ?? '',
       instruction: subsections['Instruction'] ?? '',
       messageParts,
     };
@@ -120,18 +118,20 @@ const stageLogic = {
     }),
     serialize: (memory) => {
       const filled = memory.questions.filter((q) => q.text.trim());
+      // num() preserves the original question number from Stage 2
+      const num = (q) => filled.indexOf(q) + 1;
       const open = filled.filter((q) => memory.classifications[q.id] === 'open');
       const closed = filled.filter((q) => memory.classifications[q.id] === 'closed');
       const unsorted = filled.filter((q) => !memory.classifications[q.id]);
       return [
         'Open questions:',
-        ...(open.length ? open.map((q, i) => `${i + 1}. ${q.text}`) : ['(none)']),
+        ...(open.length ? open.map((q) => `${num(q)}. ${q.text}`) : ['(none)']),
         '',
         'Closed questions:',
-        ...(closed.length ? closed.map((q, i) => `${i + 1}. ${q.text}`) : ['(none)']),
+        ...(closed.length ? closed.map((q) => `${num(q)}. ${q.text}`) : ['(none)']),
         '',
         'Unsorted questions:',
-        ...(unsorted.length ? unsorted.map((q, i) => `${i + 1}. ${q.text}`) : ['(none)']),
+        ...(unsorted.length ? unsorted.map((q) => `${num(q)}. ${q.text}`) : ['(none)']),
       ].join('\n');
     },
     Component: CategorizeQuestionsStage,
@@ -187,12 +187,7 @@ const stageLogic = {
 };
 
 /** @type {Stage[]} */
-export const stages = stageContent.map((content) => {
-  const logic = stageLogic[content.id];
-  // For textarea stages, DefaultStage renders input.instruction on screen —
-  // use the markdown source rather than hardcoding it in the logic functions.
-  const patchedInput = logic.inputType === 'textarea'
-    ? (memory) => ({ memory, instruction: content.instruction })
-    : logic.input;
-  return { ...content, ...logic, input: patchedInput };
-});
+export const stages = stageContent.map((content) => ({
+  ...content,
+  ...stageLogic[content.id],
+}));

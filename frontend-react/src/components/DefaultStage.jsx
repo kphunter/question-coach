@@ -5,7 +5,7 @@
  * @param {{ input: { memory: import('../stages').SharedMemory, instruction: string } }} props
  */
 export default function DefaultStage({ input }) {
-  const { memory, instruction } = input
+  const { memory } = input
   const filled = (memory.questions ?? []).filter((q) => q.text.trim())
   const openCount = filled.filter((q) => memory.classifications?.[q.id] === 'open').length
   const closedCount = filled.filter((q) => memory.classifications?.[q.id] === 'closed').length
@@ -16,7 +16,6 @@ export default function DefaultStage({ input }) {
   return (
     <div className="default-stage-panel">
       <h3>Stage workspace</h3>
-      <p>{instruction}</p>
       <div className="memory-summary">
         <div>
           <strong>Questions:</strong> {filled.length}

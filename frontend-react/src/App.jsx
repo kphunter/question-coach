@@ -3,31 +3,45 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { stages } from "./stages";
 import { uid } from "./utils";
+import rawWelcome from "./welcome.md?raw";
+
+// ── Configuration ─────────────────────────────────────────────────────────
+/** Delay between sequential intro/response message bubbles, in milliseconds. */
+const INTRO_DELAY_MS = 4000;
+/** Longer delay for messages marked [slow] in stages.md. */
+const SECONDARY_DELAY_MS = 10000;
+
+const defaultSettings = {
+  use_gemini: true,
+  search_strategy: "auto",
+  search_limit: 5,
+  gemini_model: "gemini-2.5-flash",
+};
 
 const QFT_STEPS = [
   {
     number: 1,
-    title: "Focus",
+    title: "Question Focus",
     body: "A statement, image, or scenario can spark curiosity without dictating a direction.",
   },
   {
     number: 2,
-    title: "Produce",
+    title: "Produce Questions",
     body: "Generate as many questions as you can. Don't stop to judge or answer, write every question as asked, and change any statements into questions.",
   },
   {
     number: 3,
-    title: "Improve",
+    title: "Improve Questions",
     body: "Label each question as open-ended (requires explanation, discussion, or exploration) or closed (can be answered with a single word or fact). Practice converting between types and reflecting on the qualities of each type.",
   },
   {
     number: 4,
-    title: "Prioritize",
+    title: "Prioritize Questions",
     body: "Choose your most important questions based on a defined set of criteria.",
   },
   {
     number: 5,
-    title: "Discuss",
+    title: "Next Steps",
     body: "What comes next? Research, writing, an experiment, a conversation, or another stage of inquiry?",
   },
   {
@@ -39,44 +53,62 @@ const QFT_STEPS = [
 
 function QFTInfoPanel() {
   const [openSteps, setOpenSteps] = useState(() => new Set([1]));
+  const [panelOpen, setPanelOpen] = useState(false);
   return (
     <div className="qft-info-panel">
-      <div className="qft-info-header">
-        <span className="qft-info-title">
-          What is the Question Formulation Technique (QFT)?
-        </span>
+      <div className={`qft-outer-accordion${panelOpen ? " open" : ""}`}>
+        <button
+          className="qft-outer-btn"
+          onClick={() => setPanelOpen((v) => !v)}
+          type="button"
+        >
+          <span className="qft-info-title">What is QFT?</span>
+          <span className="material-symbols-rounded qft-chevron">
+            {panelOpen ? "expand_less" : "expand_more"}
+          </span>
+        </button>
+        {panelOpen && (
+          <>
+            <p className="qft-description">
+              The Question Formulation Technique (QFT) is a six-stage structured
+              process developed by the Right Question Institute to teach
+              learners how to formulate, refine, and prioritize their own
+              questions.
+            </p>
+            <ol className="qft-steps qft-steps-nested">
+              {QFT_STEPS.map((step) => {
+                const isOpen = openSteps.has(step.number);
+                return (
+                  <li
+                    key={step.number}
+                    className={`qft-step${isOpen ? " open" : ""}`}
+                  >
+                    <button
+                      className="qft-step-btn"
+                      onClick={() =>
+                        setOpenSteps((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(step.number)) next.delete(step.number);
+                          else next.add(step.number);
+                          return next;
+                        })
+                      }
+                      type="button"
+                    >
+                      <span className="qft-step-num">{step.number}</span>
+                      <span className="qft-step-title">{step.title}</span>
+                      <span className="material-symbols-rounded qft-chevron">
+                        {isOpen ? "expand_less" : "expand_more"}
+                      </span>
+                    </button>
+                    {isOpen && <div className="qft-step-body">{step.body}</div>}
+                  </li>
+                );
+              })}
+            </ol>
+          </>
+        )}
       </div>
-      <ol className="qft-steps">
-        {QFT_STEPS.map((step) => {
-          const isOpen = openSteps.has(step.number);
-          return (
-            <li
-              key={step.number}
-              className={`qft-step${isOpen ? " open" : ""}`}
-            >
-              <button
-                className="qft-step-btn"
-                onClick={() =>
-                  setOpenSteps((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(step.number)) next.delete(step.number);
-                    else next.add(step.number);
-                    return next;
-                  })
-                }
-                type="button"
-              >
-                <span className="qft-step-num">{step.number}</span>
-                <span className="qft-step-title">{step.title}</span>
-                <span className="material-symbols-rounded qft-chevron">
-                  {isOpen ? "expand_less" : "expand_more"}
-                </span>
-              </button>
-              {isOpen && <div className="qft-step-body">{step.body}</div>}
-            </li>
-          );
-        })}
-      </ol>
     </div>
   );
 }
@@ -117,16 +149,14 @@ function SourcesToggle({ sources }) {
   );
 }
 
-const defaultSettings = {
-  use_gemini: true,
-  search_strategy: "auto",
-  search_limit: 5,
-  gemini_model: "gemini-2.5-flash",
-};
-
 function buildApiBase() {
   return import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 }
+
+// ── Welcome card content (from welcome.md) ────────────────────────────────
+const welcomeLines = rawWelcome.split("\n").filter((l) => l.trim());
+const welcomeTitle = welcomeLines[0].replace(/^#+\s*/, "");
+const welcomeBody = welcomeLines.slice(1).join(" ").trim();
 
 /** @returns {import('./stages').SharedMemory} */
 function initialMemory() {
@@ -138,9 +168,6 @@ function initialMemory() {
     stageNotes: {},
   };
 }
-
-/** Delay between sequential intro message bubbles, in milliseconds. */
-const INTRO_DELAY_MS = 4000;
 
 function hasStoredChat(stageId) {
   try {
@@ -184,13 +211,10 @@ export default function App() {
   const [snackbar, setSnackbar] = useState("");
   const [messages, setMessages] = useState(() => {
     const s0 = stages[0];
-    const firstText =
-      s0.messageParts?.[0] ??
-      `**${s0.heading}**\n\n${s0.description}\n\n${s0.instruction}`;
     const defaultMsg = {
       id: uid(),
       role: "assistant",
-      text: firstText,
+      text: s0.instruction,
       stageIndex: 0,
       isCoach: true,
       createdAt: new Date().toISOString(),
@@ -215,23 +239,25 @@ export default function App() {
   }
 
   function scheduleIntroParts(parts, stageIdx, delayMs) {
-    parts.slice(1).forEach((text, i) => {
-      const id = setTimeout(
-        () => {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: uid(),
-              role: "assistant",
-              text,
-              stageIndex: stageIdx,
-              isCoach: true,
-              createdAt: new Date().toISOString(),
-            },
-          ]);
-        },
-        delayMs * (i + 1),
-      );
+    let elapsed = 0;
+    parts.forEach((raw) => {
+      const slow = raw.startsWith("[slow]");
+      const text = slow ? raw.slice(6).trimStart() : raw;
+      const wait = slow ? SECONDARY_DELAY_MS : delayMs;
+      elapsed += wait;
+      const id = setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid(),
+            role: "assistant",
+            text,
+            stageIndex: stageIdx,
+            isCoach: true,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }, elapsed);
       introTimers.current.push(id);
     });
   }
@@ -244,7 +270,7 @@ export default function App() {
 
   // ── Schedule delayed intro parts for stage 0 on first visit ──────────────
   useEffect(() => {
-    if (initialWasFresh.current && stages[0].messageParts?.length > 1) {
+    if (initialWasFresh.current && stages[0].messageParts?.length > 0) {
       scheduleIntroParts(stages[0].messageParts, 0, INTRO_DELAY_MS);
     }
     return () => clearIntroTimers();
@@ -333,13 +359,10 @@ export default function App() {
 
     const next = stages[nextIndex];
     const isFresh = !hasStoredChat(next.id);
-    const firstText =
-      next.messageParts?.[0] ??
-      `**${next.heading}**\n\n${next.description}\n\n${next.instruction}`;
     const defaultMsg = {
       id: uid(),
       role: "assistant",
-      text: firstText,
+      text: next.instruction,
       stageIndex: nextIndex,
       isCoach: true,
       createdAt: new Date().toISOString(),
@@ -348,7 +371,7 @@ export default function App() {
     setStageIndex(nextIndex);
     setMessages(loadStageChat(next.id, [defaultMsg]));
 
-    if (isFresh && next.messageParts?.length > 1) {
+    if (isFresh && next.messageParts?.length > 0) {
       scheduleIntroParts(next.messageParts, nextIndex, INTRO_DELAY_MS);
     }
   }
@@ -452,13 +475,10 @@ export default function App() {
     clearIntroTimers();
     stages.forEach((s) => localStorage.removeItem(`qc-chat-${s.id}`));
     const s0 = stages[0];
-    const firstText =
-      s0.messageParts?.[0] ??
-      `**${s0.heading}**\n\n${s0.description}\n\n${s0.instruction}`;
     const defaultMsg = {
       id: uid(),
       role: "assistant",
-      text: firstText,
+      text: s0.instruction,
       stageIndex: 0,
       isCoach: true,
       createdAt: new Date().toISOString(),
@@ -466,7 +486,7 @@ export default function App() {
     setStageIndex(0);
     setMessages([defaultMsg]);
     setMemory(initialMemory());
-    if (s0.messageParts?.length > 1) {
+    if (s0.messageParts?.length > 0) {
       scheduleIntroParts(s0.messageParts, 0, INTRO_DELAY_MS);
     }
   }
@@ -591,7 +611,9 @@ export default function App() {
             target="_blank"
             rel="noreferrer noopener"
           >
-            <span className="material-symbols-rounded mini-icon">menu_book</span>
+            <span className="material-symbols-rounded mini-icon">
+              menu_book
+            </span>
             Knowledge Base
           </a>
           <div className="stage-pips" aria-label="Stage progress">
@@ -641,11 +663,8 @@ export default function App() {
           <div className="chat-messages" ref={messagesRef}>
             {stageIndex === 0 && (
               <div className="welcome-card">
-                <h2>Welcome!</h2>
-                <p>
-                  This is a place to help get you started with refining your
-                  research question.
-                </p>
+                <h2>{welcomeTitle}</h2>
+                <p>{welcomeBody}</p>
               </div>
             )}
 
@@ -666,7 +685,7 @@ export default function App() {
                   )}
                   <div className="msg-time">
                     {new Date(message.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
+                      hour: "numeric",
                       minute: "2-digit",
                     })}
                   </div>
@@ -694,7 +713,11 @@ export default function App() {
                 <textarea
                   className="md-textarea"
                   id="msgInput"
-                  placeholder={isConnected ? stage.placeholder : "Waiting for API connection…"}
+                  placeholder={
+                    isConnected
+                      ? stage.placeholder
+                      : "Waiting for API connection…"
+                  }
                   value={draftText}
                   disabled={!isConnected || isProcessing}
                   onChange={(event) => setDraftText(event.target.value)}
@@ -807,7 +830,10 @@ export default function App() {
               </button>
               <button
                 className="md-text-btn"
-                onClick={() => { setShowFinishModal(false); handleReset(); }}
+                onClick={() => {
+                  setShowFinishModal(false);
+                  handleReset();
+                }}
                 type="button"
               >
                 <span className="material-symbols-rounded mini-icon">
