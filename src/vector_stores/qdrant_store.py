@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 from typing import List, Dict, Any, Optional
 import os
 from .base import VectorStore
@@ -153,7 +157,7 @@ class QdrantVectorStore(VectorStore):
             collections = self.client.get_collections().collections
             return self.config.collection_name in [col.name for col in collections]
         except Exception as e:
-            self.logger.error(f"Error checking collection existence: {e}")
+            self.logger.debug(f"Error checking collection existence: {e}")
             return False
 
     def get_collection_info(self) -> Optional[Dict[str, Any]]:
@@ -688,5 +692,5 @@ class QdrantVectorStore(VectorStore):
             return True
 
         except Exception as e:
-            self.logger.error(f"Qdrant connection test failed: {e}")
+            self.logger.debug(f"Qdrant connection test failed: {e}")
             return False

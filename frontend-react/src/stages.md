@@ -1,104 +1,158 @@
-# Question Focus
+# Stage 1 - Question Focus
 
 id: question-focus
-heading: Stage 1 · Question Area of Focus
+heading: Stage 1 · Question Focus
+pipLabel: 1
 placeholder: Share your question focus or describe your assignment topic...
 
 ### Instruction
 
-Let's use the Question Formulation Technique (QFT) and prompt cards to explore a topic.
+Do you have a question focus, or do you need to develop one?
+
+Tell me about your topic or assignment in the chat box below.
 
 ### Message 1
 
-[slow] Do you have a question focus, or do you need to develop one? Tell me about your topic or assignment in the chat box below.
-
-### Message 2
-
-[slow] Expand the **What is QFT?** panel to find out more about this technique.
+[slow] Let me know if I can help clarify anything.
 
 
 
-# Produce Questions
+# Stage 2 - Produce Questions - Part A
 
-id: produce-questions
-heading: Stage 2 · Produce Questions
+id: produce-questions-a
+heading: Stage 2A · Produce Questions
+pipLabel: 2A
 placeholder: Ask or chat about the task...
 
 ### Instruction
 
-Type as many questions as you can about your topic in the **Question Workspace**.
+Now that you've got a question focus, the next stage is generate as many questions as you can.
+
+Here are the rules for this stage:
+
+1. Ask as many questions as you can.
+2. Do not stop to discuss, judge, or answer any question.
+3. Type every question exactly as stated.
+4. If you type a statement, change it into a question.
 
 ### Message 1
 
-Don't evaluate or answer them, just add them. When you're ready, submit your questions and I'll respond.
+[slow] Take a moment to look at the **Question Workspace**, where you can type as many questions as you can think of.
 
 ### Message 2
 
-[slow] Generate as many questions as possible. No judging, no stopping to answer...just type them all!
-
-### Message 3
-
-If you need help, ask in the chat.
-
-### Message 4
-
-[slow] Now draw a prompt card.
+[slow] **Spend a couple of minutes generating questions.** Check back in with me when you’ve typed all the questions you can think of.
 
 
 
-# Improve Questions
+# Stage 2 - Produce Questions - Part B
+
+id: produce-questions-b
+heading: Stage 2B · Produce Questions
+pipLabel: 2B
+placeholder: Ask or chat about the task...
+
+### Instruction
+
+Now, draw a **Divergent Thinking Card**. Divergent Thinking Cards are designed to help you generate different questions from the ones you already have.
+
+### Message 1
+
+If you have any questions about the card, let me know.
+
+### Message 2
+
+Spend another couple of minutes **generating a few additional questions.**
+
+Check back in with me when you’ve typed all the questions you can think of.
+
+
+
+# Stage 3 - Improve Questions
 
 id: improve-questions
 heading: Stage 3 · Improve Questions
+pipLabel: 3
 placeholder: Review your categorized questions...
 
 ### Instruction
 
-Now, classify each of your questions as open or closed.
+Well done. Now, let's spend a few moments classifying your questions as either *Open* or *Closed*.
+
+**Open questions** require explanation, discussion, or interpretation to answer:
+
+- For example, *"How did the passage of this law change everyday life for low-income families?"*
+
+**Closed questions** can be answered with a single word, a yes/no, or a simple fact:
+
+- For example, *"When was this law passed?"*
 
 ### Message 1
 
-Drag each question into the **Open** or **Closed** area.
+[slow] Drag each question into the **Open** or **Closed** area.
 
 ### Message 2
 
-[slow] When you're done, submit the classification so we can discuss patterns and possible revisions.
+When you're done, submit the classification so we can discuss.
 
 
 
-# Prioritize Questions
+# Stage 4 - Prioritize Questions - Part A
 
-id: prioritize-questions
-heading: Stage 4 · Prioritize Questions
-placeholder: Describe your prioritization criteria...
+id: prioritize-questions-a
+heading: Stage 4A · Prioritize Questions
+pipLabel: 4A
+placeholder: Discuss the card or ask about your criteria...
 
 ### Instruction
 
-Now that we've got questions, let's choose which ones stand-out.
+Draw a **Reflective Thinking Card**.
 
 ### Message 1
 
-First, spend some time identifying criteria to rank questions. Add criteria to the chat 
+[slow] Reflective Thinking Cards are designed to help you reflect on your questions and what they mean to you before you decide on your top picks.
 
 ### Message 2
 
-[slow] Next, drag your questions into priority order - putting the most important towards the top - and submit your ranked list.
+[slow] If you have any questions about the prompt on your card, let me know.
+
+### Message 3
+
+When you are ready to continue, click the "B" icon in the top right of the chat.
 
 
 
-# Next Steps
+# Stage 4 - Prioritize Questions - Part B
+
+id: prioritize-questions-b
+heading: Stage 4B · Prioritize Questions
+pipLabel: 4B
+placeholder: Explain your top 3 choices...
+
+### Instruction
+
+Now that you’ve had a chance to reflect on your questions, sort them into a ranked list.
+
+Drag the most important questions towards the top.
+
+### Message 1
+
+[slow] When you're ready, click the "Submit priorities" button to let me know what they are..
+
+
+
+# Stage 5 - Discuss Next Steps
 
 id: next-steps
 heading: Stage 5 · Discuss Next Steps
+pipLabel: 5
 placeholder: Describe how your questions will shape your next steps...
 
 ### Instruction
 
-You have your questions — now what? Tell me how you will use them in the next part of your assignment or inquiry.
+You have your top three questions - now what?
 
-### Message 1
-
-Map out how your prioritized questions will guide your research, writing, or inquiry.
+Can you tell me how you will use them in the next part of your assignment or inquiry?
 
 
 
@@ -106,12 +160,15 @@ Map out how your prioritized questions will guide your research, writing, or inq
 
 id: reflect
 heading: Stage 6 · Reflect
+pipLabel: 6
 placeholder: Share your reflections on the question formulation process...
 
 ### Instruction
 
-Reflect on the process. What changed in your thinking? Which stage helped you the most?
+This is the last stage of the question formulation process.
+
+I'd like to ask three questions about this process to help you reflect on what changed in your thinking.
 
 ### Message 1
 
-Consider what you learned, how your thinking changed, and how you will apply the QFT going forward.
+I'll ask one question at a time. Ready?

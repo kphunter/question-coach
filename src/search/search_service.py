@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 from typing import List, Dict, Any, Optional
 import logging
 from ..vector_stores.base import VectorStore
@@ -287,7 +291,7 @@ class SearchService:
                 query_embedding, limit, score_threshold
             )
         except Exception as e:
-            self.logger.error(f"Error generating embedding for semantic search: {e}")
+            self.logger.debug(f"Error generating embedding for semantic search: {e}")
             return []
 
     def search_exact(
@@ -339,7 +343,7 @@ class SearchService:
                 query, query_embedding, strategy, limit, score_threshold, **kwargs
             )
         except Exception as e:
-            self.logger.error(f"Error generating embedding for hybrid search: {e}")
+            self.logger.debug(f"Error generating embedding for hybrid search: {e}")
             # Fallback to exact search if embedding fails
             try:
                 return self._search_exact_with_text(query, limit, score_threshold)
@@ -369,7 +373,7 @@ class SearchService:
                 query, query_embedding, limit, score_threshold
             )
         except Exception as e:
-            self.logger.error(f"Error generating embedding for auto search: {e}")
+            self.logger.debug(f"Error generating embedding for auto search: {e}")
             # Fallback to exact search if embedding fails
             try:
                 return self._search_exact_with_text(query, limit, score_threshold)

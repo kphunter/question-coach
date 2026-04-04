@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r api-requirements.txt
 # Copy application code
 COPY src/ /app/src/
 COPY api/server.py /app/api/server.py
-COPY ingestion-config.yaml.example /app/ingestion-config.yaml
+COPY ai-config.yaml.example /app/ai-config.yaml
 
 # Create necessary directories
 RUN mkdir -p /app/documents /app/qdrant_storage

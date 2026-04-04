@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import { useEffect, useRef, useState } from "react";
 import { uid } from "../utils";
 
@@ -15,10 +19,12 @@ export default function QuestionProductionStage({ input, onSubmit, onSend }) {
     if (firstId) inputRefs.current[firstId]?.focus();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus newly added field after render
+  // Focus newly added field after render and scroll it into view
   useEffect(() => {
     if (pendingFocusId.current) {
-      inputRefs.current[pendingFocusId.current]?.focus();
+      const el = inputRefs.current[pendingFocusId.current];
+      el?.focus();
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       pendingFocusId.current = null;
     }
   }, [questions]);
@@ -104,18 +110,19 @@ export default function QuestionProductionStage({ input, onSubmit, onSend }) {
             </li>
           ))}
         </ul>
-        <div className="ql-submit-row">
-          <span className="input-hint">Enter to add question</span>
-          <button
-            className="md-tonal-btn"
-            disabled={filledCount === 0}
-            onClick={onSend}
-            type="button"
-          >
-            Submit questions
-            <span className="material-symbols-rounded mini-icon">send</span>
-          </button>
-        </div>
+      </div>
+
+      <div className="ql-submit-row">
+        <span className="input-hint">Enter to add question</span>
+        <button
+          className="md-tonal-btn"
+          disabled={filledCount === 0}
+          onClick={onSend}
+          type="button"
+        >
+          Submit questions
+          <span className="material-symbols-rounded mini-icon">send</span>
+        </button>
       </div>
     </div>
   );

@@ -41,7 +41,7 @@ llm:
     model: "llama3.2" # alternatives: "llama3.2:3b", "qwen2.5:7b"
     base_url: "http://localhost:11434"
   gemini:
-    model: "gemini-2.5-flash"
+    model: "gemini-2.5-flash-lite"
 
 vector_db:
   provider: "qdrant"

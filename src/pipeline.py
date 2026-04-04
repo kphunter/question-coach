@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import logging
 import json
 import time
@@ -71,21 +75,21 @@ class IngestionPipeline:
         try:
             results["embedding_provider"] = self.embedding_provider.test_connection()
         except Exception as e:
-            self.logger.error(f"Embedding provider test failed: {e}")
+            self.logger.debug(f"Embedding provider test failed: {e}")
             results["embedding_provider"] = False
 
         # Test vector store
         try:
             results["vector_store"] = self.vector_store.test_connection()
         except Exception as e:
-            self.logger.error(f"Vector store test failed: {e}")
+            self.logger.debug(f"Vector store test failed: {e}")
             results["vector_store"] = False
 
         # Test LLM provider
         try:
             results["llm_provider"] = self.llm_provider.test_connection()
         except Exception as e:
-            self.logger.error(f"LLM provider test failed: {e}")
+            self.logger.debug(f"LLM provider test failed: {e}")
             results["llm_provider"] = False
 
         return results

@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import json
 import logging
 import os
@@ -479,7 +483,7 @@ class GeminiLLMProvider(LLMProvider):
             api_key = self.gemini_config.api_key or os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError(
-                    "Gemini API key is required. Set it in ingestion-config.yaml or GEMINI_API_KEY environment variable"
+                    "Gemini API key is required. Set it in ai-config.yaml or GEMINI_API_KEY environment variable"
                 )
 
             self._use_new_sdk = True
@@ -538,7 +542,7 @@ class GeminiLLMProvider(LLMProvider):
             api_key = self.gemini_config.api_key or os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError(
-                    "Gemini API key is required. Set it in ingestion-config.yaml or GEMINI_API_KEY environment variable"
+                    "Gemini API key is required. Set it in ai-config.yaml or GEMINI_API_KEY environment variable"
                 )
 
             genai.configure(api_key=api_key)

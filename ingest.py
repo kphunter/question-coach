@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #!/usr/bin/env python3
 """
 Document Ingestion Pipeline CLI
@@ -28,7 +32,7 @@ def print_json(data):
 
 @click.group()
 @click.option(
-    "--config", "-c", default="ingestion-config.yaml", help="Path to configuration file"
+    "--config", "-c", default="ai-config.yaml", help="Path to configuration file"
 )
 @click.pass_context
 def cli(ctx, config):

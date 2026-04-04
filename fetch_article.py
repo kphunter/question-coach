@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #!/usr/bin/env python3
 """
 Enhanced Article Fetcher Script
@@ -78,7 +82,7 @@ class ArticleFetcher:
 
     def __init__(
         self,
-        config_path: str = "ingestion-config.yaml",
+        config_path: str = "ai-config.yaml",
         output_format: str = "json",
         output_dir: Optional[str] = None,
         output_console: bool = False,
@@ -844,7 +848,7 @@ Examples:
         metavar="FILE",
         help="Read URLs from a file (one per line, # for comments). Defaults to inputs/links.txt if it exists.",
     )
-    parser.add_argument("--config", default="ingestion-config.yaml", help="Path to config file")
+    parser.add_argument("--config", default="ai-config.yaml", help="Path to config file")
 
     # Output format options
     parser.add_argument(

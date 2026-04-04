@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 FastAPI server for Document Embeddings Pipeline.
 
@@ -13,7 +17,7 @@ import os
 import sys
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 from fastapi import FastAPI, HTTPException, status
@@ -57,6 +61,11 @@ class SearchResponse(BaseModel):
     sources: List[Dict[str, Any]]
 
 
+class HistoryMessage(BaseModel):
+    role: str = Field(..., description="'user' or 'model'")
+    text: str = Field(..., description="Message content")
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message/question")
     search_limit: int = Field(default=5, ge=1, le=20, description="Number of context chunks to retrieve")
@@ -64,6 +73,7 @@ class ChatRequest(BaseModel):
     use_gemini: bool = Field(default=True, description="Whether to use Gemini for response generation")
     gemini_model: str = Field(default="gemini-1.5-flash", description="Gemini model to use")
     system_prompt: Optional[str] = Field(default=None, description="System prompt to prepend to the LLM request")
+    history: List[HistoryMessage] = Field(default_factory=list, description="Prior turns in the current stage conversation")
 
 
 class ChatResponse(BaseModel):
@@ -120,7 +130,7 @@ app.add_middleware(
 
 # Initialize pipeline — optional; None when the knowledge base is not running.
 pipeline = None
-_config_path = Path(__file__).parent.parent / "ingestion-config.yaml"
+_config_path = Path(__file__).parent.parent / "ai-config.yaml"
 if _config_path.exists():
     try:
         config = load_config(str(_config_path))
@@ -132,18 +142,12 @@ if _config_path.exists():
             _pipeline_err,
         )
 else:
-    logger.info("No ingestion-config.yaml found — running in direct mode (Gemini only)")
+    logger.info("No ai-config.yaml found — running in direct mode (Gemini only)")
 
 AGENTS_DIR = Path(__file__).parent.parent / "agents"
 PROMPTS_DIR = AGENTS_DIR / "prompts"
 STAGES_DIR = PROMPTS_DIR / "stages"
-GLOBAL_PROMPT_FILES = [
-    "QC-AGENT.md",
-    "IDENTITY.md",
-    "SOUL.md",
-    "POLICIES.md",
-    "USER.md",
-]
+GLOBAL_PROMPT_FILE = PROMPTS_DIR / "SYSTEM_PROMPT.md"
 EXAMPLES_FILE = PROMPTS_DIR / "EXAMPLES.md"
 AGENT_CONFIG_FILE = AGENTS_DIR / "CONFIG.json"
 
@@ -168,10 +172,12 @@ def _load_agent_config(path: Path) -> Dict[str, Any]:
         return {}
 
 
-_global_prompt_parts = [
-    _read_agent_file(AGENTS_DIR / filename) for filename in GLOBAL_PROMPT_FILES
-]
-_global_prompt_parts = [part for part in _global_prompt_parts if part]
+_global_prompt_parts = []
+_global_system_prompt = _read_agent_file(GLOBAL_PROMPT_FILE)
+if _global_system_prompt:
+    _global_prompt_parts.append(_global_system_prompt)
+else:
+    logger.warning("agents/prompts/SYSTEM_PROMPT.md not found — global prompt will be empty")
 
 AGENT_CONFIG = _load_agent_config(AGENT_CONFIG_FILE) or {}
 if not isinstance(AGENT_CONFIG, dict):
@@ -247,8 +253,9 @@ async def generate_gemini_response(
     sources: List[Dict[str, Any]],
     model: str = "gemini-2.5-flash",
     system_prompt: Optional[str] = None,
+    history: Optional[List[HistoryMessage]] = None,
 ) -> str:
-    """Generate response using Gemini with retrieved context."""
+    """Generate response using Gemini with retrieved context and conversation history."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.warning("Gemini API key not found, using fallback response")
@@ -263,7 +270,7 @@ async def generate_gemini_response(
         source_list = "\n".join([f"[{s['index']}] {s['title']}" for s in sources])
 
         if context:
-            user_turn = f"""CONTEXT FROM KNOWLEDGE BASE:
+            current_turn_text = f"""CONTEXT FROM KNOWLEDGE BASE:
 {context}
 
 SOURCES:
@@ -274,7 +281,25 @@ USER MESSAGE:
 
 Use the context above to inform your response where relevant. Cite sources using [1], [2], etc. when referencing retrieved content."""
         else:
-            user_turn = user_message
+            current_turn_text = user_message
+
+        # Build multi-turn contents from history + current message.
+        # Gemini requires the first turn to be from the user, so leading
+        # model turns (e.g. coach intro messages) are skipped.
+        contents: List[Any] = []
+        for msg in (history or []):
+            role = "user" if msg.role == "user" else "model"
+            text = (msg.text or "").strip()
+            if not text:
+                continue
+            if not contents and role == "model":
+                continue  # skip leading model turns
+            contents.append(
+                genai_types.Content(role=role, parts=[genai_types.Part(text=text)])
+            )
+        contents.append(
+            genai_types.Content(role="user", parts=[genai_types.Part(text=current_turn_text)])
+        )
 
         kwargs: Dict[str, Any] = {}
         if system_prompt:
@@ -285,14 +310,21 @@ Use the context above to inform your response where relevant. Cite sources using
 
         response = client.models.generate_content(
             model=model,
-            contents=user_turn,
+            contents=contents,
             **kwargs,
         )
         return response.text
 
     except Exception as e:
         logger.error(f"Error generating Gemini response: {e}")
-        return f"I found relevant context in the knowledge base, but encountered an error generating the response: {str(e)}"
+        err = str(e)
+        if "503" in err or "UNAVAILABLE" in err or "high demand" in err:
+            return "Darn — the model is currently experiencing high demand. Please try again in a moment."
+        if "429" in err or "RESOURCE_EXHAUSTED" in err or "quota" in err.lower():
+            return "The model has hit its rate limit. Please wait a moment and try again."
+        if "401" in err or "403" in err or "API_KEY" in err or "permission" in err.lower():
+            return "There's an issue with the API configuration. Please contact support."
+        return "Something went wrong while generating a response. Please try again."
 
 
 @app.get("/", response_model=Dict[str, str])
@@ -305,9 +337,16 @@ async def root():
     }
 
 
+_health_cache: Optional[HealthResponse] = None
+_health_cache_until: datetime = datetime.min
+_HEALTH_CACHE_TTL = timedelta(seconds=60)
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check health status of all services."""
+    global _health_cache, _health_cache_until
+
     if pipeline is None:
         return HealthResponse(
             status="healthy",
@@ -316,13 +355,22 @@ async def health_check():
             collection_count=None,
             kb_available=False,
         )
+
+    if _health_cache is not None and datetime.now() < _health_cache_until:
+        return _health_cache
+
     try:
-        services = pipeline.test_connections()
+        # Only test local services — skip the LLM provider to avoid
+        # unnecessary external API calls during routine health checks.
+        services = {
+            "embedding_provider": pipeline.embedding_provider.test_connection(),
+            "vector_store": pipeline.vector_store.test_connection(),
+        }
         collection_info = pipeline.check_collection()
         collection_exists = collection_info.get("exists", False)
         collection_count = collection_info.get("vectors_count")
         kb_up = all(services.values()) and collection_exists
-        return HealthResponse(
+        result = HealthResponse(
             status="healthy" if kb_up else "degraded",
             services=services,
             collection_exists=collection_exists,
@@ -331,13 +379,17 @@ async def health_check():
         )
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return HealthResponse(
+        result = HealthResponse(
             status="degraded",
             services={},
             collection_exists=False,
             collection_count=None,
             kb_available=False,
         )
+
+    _health_cache = result
+    _health_cache_until = datetime.now() + _HEALTH_CACHE_TTL
+    return result
 
 
 @app.get("/capabilities", response_model=CapabilitiesResponse)
@@ -552,6 +604,7 @@ async def chat(request: ChatRequest):
                 sources,
                 request.gemini_model,
                 system_prompt=system_prompt,
+                history=request.history,
             )
         else:
             response_text = (

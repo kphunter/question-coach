@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import rawContent from './stages.md?raw';
 import DefaultStage from "./components/DefaultStage";
 import QuestionProductionStage from "./components/QuestionProductionStage";
@@ -62,6 +66,7 @@ function parseStagesMarkdown(raw) {
       number: i + 1,
       heading: meta.heading ?? '',
       placeholder: meta.placeholder ?? '',
+      pipLabel: meta.pipLabel ?? null,
       name,
       instruction: subsections['Instruction'] ?? '',
       messageParts,
@@ -73,8 +78,32 @@ const stageContent = parseStagesMarkdown(rawContent);
 
 // ── Per-stage logic (input/output/serialize/Component) ────────────────────
 // Text content lives in stages.md; only pure logic belongs here.
+
+/** Shared workspace logic for both produce-questions-a and produce-questions-b. */
+const produceQuestionsLogic = {
+  inputType: 'question-list',
+  input: (memory) => ({ questions: memory.questions }),
+  output: (result, memory) => {
+    const questions = result.questions;
+    // Re-sync priorities: keep existing order, append new IDs, drop removed ones
+    const existingOrder = memory.priorities.filter((id) =>
+      questions.some((q) => q.id === id),
+    );
+    const newIds = questions
+      .map((q) => q.id)
+      .filter((id) => !existingOrder.includes(id));
+    return { ...memory, questions, priorities: [...existingOrder, ...newIds] };
+  },
+  serialize: (memory) => {
+    const filled = memory.questions.filter((q) => q.text.trim());
+    return filled.map((q, i) => `${i + 1}. ${q.text.trim()}`).join('\n');
+  },
+  Component: QuestionProductionStage,
+};
+
 const stageLogic = {
   'question-focus': {
+    promptId: 1,
     inputType: 'textarea',
     input: null, // replaced at merge time with markdown instruction
     output: (result, memory) => ({
@@ -85,28 +114,18 @@ const stageLogic = {
     Component: DefaultStage,
   },
 
-  'produce-questions': {
-    inputType: 'question-list',
-    input: (memory) => ({ questions: memory.questions }),
-    output: (result, memory) => {
-      const questions = result.questions;
-      // Re-sync priorities: keep existing order, append new IDs, drop removed ones
-      const existingOrder = memory.priorities.filter((id) =>
-        questions.some((q) => q.id === id),
-      );
-      const newIds = questions
-        .map((q) => q.id)
-        .filter((id) => !existingOrder.includes(id));
-      return { ...memory, questions, priorities: [...existingOrder, ...newIds] };
-    },
-    serialize: (memory) => {
-      const filled = memory.questions.filter((q) => q.text.trim());
-      return filled.map((q, i) => `${i + 1}. ${q.text.trim()}`).join('\n');
-    },
-    Component: QuestionProductionStage,
+  'produce-questions-a': {
+    promptId: 2,
+    ...produceQuestionsLogic,
+  },
+
+  'produce-questions-b': {
+    promptId: 7,
+    ...produceQuestionsLogic,
   },
 
   'improve-questions': {
+    promptId: 3,
     inputType: 'categorize',
     input: (memory) => ({
       questions: memory.questions.filter((q) => q.text.trim()),
@@ -137,33 +156,45 @@ const stageLogic = {
     Component: CategorizeQuestionsStage,
   },
 
-  'prioritize-questions': {
+  'prioritize-questions-a': {
+    promptId: 8,
+    inputType: 'textarea',
+    input: null,
+    output: (result, memory) => ({
+      ...memory,
+      stageNotes: { ...memory.stageNotes, 'prioritize-questions-a': result.text },
+    }),
+    serialize: (_memory, draftText) => draftText?.trim() ?? '',
+    Component: DefaultStage,
+  },
+
+  'prioritize-questions-b': {
+    promptId: 4,
     inputType: 'prioritize',
     input: (memory) => ({
       questions: memory.questions.filter((q) => q.text.trim()),
       priorities: memory.priorities.filter((id) =>
         memory.questions.some((q) => q.id === id && q.text.trim()),
       ),
-      starred: memory.starred,
     }),
     output: (result, memory) => ({
       ...memory,
       priorities: result.priorities,
-      starred: result.starred,
     }),
     serialize: (memory) => {
       const filled = memory.questions.filter((q) => q.text.trim());
-      const starredSet = new Set(memory.starred);
-      const ranked = memory.priorities
+      const top3 = memory.priorities
         .map((id) => filled.find((q) => q.id === id))
         .filter(Boolean)
-        .map((q, i) => `${i + 1}. ${starredSet.has(q.id) ? '★ ' : ''}${q.text}`);
-      return ['Priority ranking:', ...(ranked.length ? ranked : ['(none)'])].join('\n');
+        .slice(0, 3)
+        .map((q, i) => `${i + 1}. ${q.text}`);
+      return ['My top 3 questions:', ...(top3.length ? top3 : ['(none)'])].join('\n');
     },
     Component: PrioritizeQuestionsStage,
   },
 
   'next-steps': {
+    promptId: 5,
     inputType: 'textarea',
     input: null, // replaced at merge time with markdown instruction
     output: (result, memory) => ({
@@ -175,6 +206,7 @@ const stageLogic = {
   },
 
   'reflect': {
+    promptId: 6,
     inputType: 'textarea',
     input: null, // replaced at merge time with markdown instruction
     output: (result, memory) => ({

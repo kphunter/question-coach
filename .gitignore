@@ -48,7 +48,7 @@ models/
 *.temp
 
 # Private
-#ingestion-config.yaml
+#ai-config.yaml
 inputs/docs/
 inputs/fetched/
 inputs/.last_incremental_run

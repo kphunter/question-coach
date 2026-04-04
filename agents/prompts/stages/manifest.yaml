@@ -1,28 +1,41 @@
 # Stage manifest — lists each QFT stage in order.
-# The API reads this file, then loads each stage's system prompt
+# The API reads this file at startup, then loads each stage's system prompt
 # from the corresponding prompt_file in this directory.
+#
+# IDs are non-sequential by design (1, 2, 7, 3, 8, 4, 5, 6).
+# The frontend maps each stage to its prompt via `promptId`, not by position.
+# Stages 2 and 4 are each split into two parts (A and B), each with its own
+# prompt file and manifest ID.
 
 stages:
   - id: 1
     name: "Question Focus"
-    prompt_file: "stage-1-question-focus.md"
+    prompt_file: "STAGE_1_QUESTION_FOCUS.md"
 
   - id: 2
-    name: "Produce Questions"
-    prompt_file: "stage-2-produce-questions.md"
+    name: "Produce Questions (Part A)"
+    prompt_file: "STAGE_2A_PRODUCE_QUESTIONS.md"
+
+  - id: 7
+    name: "Produce Questions (Part B)"
+    prompt_file: "STAGE_2B_PROMPT_CARD_EXTENSION.md"
 
   - id: 3
     name: "Improve Questions"
-    prompt_file: "stage-3-improve-questions.md"
+    prompt_file: "STAGE_3_IMPROVE_QUESTIONS.md"
+
+  - id: 8
+    name: "Prioritize Questions (Part A)"
+    prompt_file: "STAGE_4A_REFLECTIVE_CARD.md"
 
   - id: 4
-    name: "Prioritize Questions"
-    prompt_file: "stage-4-prioritize-questions.md"
+    name: "Prioritize Questions (Part B)"
+    prompt_file: "STAGE_4B_RANK_TOP_THREE.md"
 
   - id: 5
     name: "Next Steps"
-    prompt_file: "stage-5-next-steps.md"
+    prompt_file: "STAGE_5_NEXT_STEPS.md"
 
   - id: 6
     name: "Reflect"
-    prompt_file: "stage-6-reflect.md"
+    prompt_file: "STAGE_6_REFLECT.md"

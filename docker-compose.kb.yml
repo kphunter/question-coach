@@ -89,7 +89,7 @@ services:
       - QDRANT_HOST=qdrant
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
-      - ./ingestion-config.yaml:/app/ingestion-config.yaml:ro
+      - ./ai-config.yaml:/app/ai-config.yaml:ro
       - ./inputs:/app/inputs
       - qdrant_data:/app/qdrant_data
       - ./src:/app/src:ro

@@ -42,8 +42,8 @@ if [ -z "$GEMINI_API_KEY" ]; then
     exit 1
 fi
 
-if [ ! -f ingestion-config.yaml ] && [ -f ingestion-config.yaml.example ]; then
-    cp ingestion-config.yaml.example ingestion-config.yaml
+if [ ! -f ai-config.yaml ] && [ -f ai-config.yaml.example ]; then
+    cp ai-config.yaml.example ai-config.yaml
 fi
 
 # Ensure Qdrant and Ollama are running (ollama-pull starts automatically as a dependent)

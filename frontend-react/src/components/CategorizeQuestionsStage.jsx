@@ -1,6 +1,10 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import { DndContext, DragOverlay, PointerSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 function DraggableQuestion({ id, text, badge, onQuestionClick }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id })
@@ -65,11 +69,25 @@ function UnassignedList({ items, onQuestionClick }) {
   )
 }
 
-export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQuestionClick }) {
+const REWRITE_PHASES = [
+  {
+    label: 'Rewrite an Open Question',
+    placeholder: 'Transform an OPEN question into a closed question and click submit',
+  },
+  {
+    label: 'Rewrite a Closed Question',
+    placeholder: 'Transform a CLOSED question into an open question and click submit',
+  },
+]
+
+export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQuestionClick, onSendText }) {
   const { questions, classifications: initialClassifications } = input
   const [classifications, setClassifications] = useState(initialClassifications)
   const [activeId, setActiveId] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  const [rewriteText, setRewriteText] = useState('')
+  const [rewritePhase, setRewritePhase] = useState(0)
+  const rewriteRef = useRef(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   function handleChange(next) {
@@ -111,7 +129,32 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
     handleChange(next)
   }
 
+  // Focus the rewrite textarea as soon as it appears
+  useEffect(() => {
+    if (submitted) rewriteRef.current?.focus()
+  }, [submitted])
+
+  function handleClassifySubmit() {
+    setSubmitted(true)
+    onSend()
+  }
+
+  function handleRewriteSubmit() {
+    const text = rewriteText.trim()
+    if (!text) return
+    onSendText?.(text)
+    setRewriteText('')
+    setRewritePhase((p) => Math.min(p + 1, REWRITE_PHASES.length - 1))
+    rewriteRef.current?.focus()
+  }
+
+  // After submitting classifications, tapping a question fills the rewrite box
+  const effectiveQuestionClick = submitted
+    ? (text) => { setRewriteText(text); rewriteRef.current?.focus() }
+    : onQuestionClick
+
   const activeQuestion = questions.find((q) => q.id === activeId)
+  const phase = REWRITE_PHASES[rewritePhase]
 
   return (
     <div className="dnd-stage-wrap">
@@ -119,34 +162,72 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
         <h3>Classify questions</h3>
         <p>
           Drag each question into Open or Closed.{' '}
-          {onQuestionClick && <span className="hint-inline">Tap a question to copy it to the chat box.</span>}
+          {submitted
+            ? <span className="hint-inline">Tap a question to copy it to the rewrite question box.</span>
+            : onQuestionClick && <span className="hint-inline">Tap a question to copy it to the chat box.</span>
+          }
         </p>
       </div>
 
-      <div className="stage-actions">
-        <button className="md-tonal-btn" onClick={() => { setSubmitted(true); onSend() }} type="button">
-          {submitted ? 'Resubmit classifications' : 'Submit classifications'}
-          <span className="material-symbols-rounded mini-icon">send</span>
-        </button>
+      <div className="dnd-scroll-body">
+        <DndContext
+          collisionDetection={closestCenter}
+          onDragStart={(event) => setActiveId(String(event.active.id))}
+          onDragEnd={handleDragEnd}
+          sensors={sensors}
+        >
+          <div className="categorize-wrap">
+            <div className="categorize-grid">
+              <DroppableColumn id="open" title="Open" items={grouped.open} onQuestionClick={effectiveQuestionClick} />
+              <DroppableColumn id="closed" title="Closed" items={grouped.closed} onQuestionClick={effectiveQuestionClick} />
+            </div>
+            {!submitted && (
+              <UnassignedList items={grouped.unassigned} onQuestionClick={effectiveQuestionClick} />
+            )}
+          </div>
+          <DragOverlay>
+            {activeQuestion ? <div className="question-chip overlay">{activeQuestion.text}</div> : null}
+          </DragOverlay>
+        </DndContext>
       </div>
 
-      <DndContext
-        collisionDetection={closestCenter}
-        onDragStart={(event) => setActiveId(String(event.active.id))}
-        onDragEnd={handleDragEnd}
-        sensors={sensors}
-      >
-        <div className="categorize-wrap">
-          <div className="categorize-grid">
-            <DroppableColumn id="open" title="Open" items={grouped.open} onQuestionClick={onQuestionClick} />
-            <DroppableColumn id="closed" title="Closed" items={grouped.closed} onQuestionClick={onQuestionClick} />
+      {submitted && (
+        <div className="rewrite-box">
+          <label className="rewrite-label" htmlFor="rewrite-input">{phase.label}</label>
+          <textarea
+            className="md-textarea rewrite-textarea"
+            id="rewrite-input"
+            ref={rewriteRef}
+            placeholder={phase.placeholder}
+            value={rewriteText}
+            onChange={(e) => setRewriteText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRewriteSubmit() }
+            }}
+            rows={3}
+          />
+          <div className="rewrite-actions">
+            <button
+              className="md-tonal-btn"
+              onClick={handleRewriteSubmit}
+              type="button"
+              disabled={!rewriteText.trim()}
+            >
+              Submit
+              <span className="material-symbols-rounded mini-icon">send</span>
+            </button>
           </div>
-          <UnassignedList items={grouped.unassigned} onQuestionClick={onQuestionClick} />
         </div>
-        <DragOverlay>
-          {activeQuestion ? <div className="question-chip overlay">{activeQuestion.text}</div> : null}
-        </DragOverlay>
-      </DndContext>
+      )}
+
+      {!submitted && (
+        <div className="stage-actions">
+          <button className="md-tonal-btn" onClick={handleClassifySubmit} type="button">
+            Submit classifications
+            <span className="material-symbols-rounded mini-icon">send</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

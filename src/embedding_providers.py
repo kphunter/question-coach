@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import logging
 import os
 import time
@@ -56,7 +60,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             response = requests.post(url, json=payload, timeout=self.config.timeout)
             response.raise_for_status()
         except requests.RequestException as e:
-            self.logger.error(f"Ollama /api/embed request failed: {e}")
+            self.logger.debug(f"Ollama /api/embed request failed: {e}")
             raise
 
         result = response.json()
@@ -134,7 +138,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             return True
 
         except Exception as e:
-            self.logger.error(f"Ollama connection test failed: {e}")
+            self.logger.debug(f"Ollama connection test failed: {e}")
             return False
 
 
@@ -159,7 +163,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             api_key = self.gemini_config.api_key or os.getenv("GEMINI_API_KEY")
             if not api_key:
                 raise ValueError(
-                    "Gemini API key is required. Set it in ingestion-config.yaml or GEMINI_API_KEY environment variable"
+                    "Gemini API key is required. Set it in ai-config.yaml or GEMINI_API_KEY environment variable"
                 )
 
             self.genai_client = genai_new.Client(api_key=api_key)
@@ -172,7 +176,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
                 api_key = self.gemini_config.api_key or os.getenv("GEMINI_API_KEY")
                 if not api_key:
                     raise ValueError(
-                        "Gemini API key is required. Set it in ingestion-config.yaml or GEMINI_API_KEY environment variable"
+                        "Gemini API key is required. Set it in ai-config.yaml or GEMINI_API_KEY environment variable"
                     )
 
                 genai_old.configure(api_key=api_key)

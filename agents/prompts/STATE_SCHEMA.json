@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QFT Agent State",
+  "type": "object",
+  "properties": {
+    "stage_id": {
+      "type": "string",
+      "enum": ["1", "2A", "2B", "3", "4A", "4B", "5", "6"]
+    },
+    "question_focus": {
+      "type": ["object", "null"],
+      "properties": {
+        "topic": {"type": ["string", "null"]},
+        "angle": {"type": ["string", "null"]},
+        "context": {"type": ["string", "null"]},
+        "draft_focus_statement": {"type": ["string", "null"]}
+      },
+      "required": ["topic", "angle", "context", "draft_focus_statement"],
+      "additionalProperties": false
+    },
+    "question_list": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "top_questions": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 3
+    },
+    "ui_capabilities": {
+      "type": "object",
+      "properties": {
+        "next_stage_button": {"type": "boolean"},
+        "b_icon": {"type": "boolean"},
+        "rewrite_box": {"type": "boolean"},
+        "ranking_canvas": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "student_progress": {
+      "type": "object",
+      "properties": {
+        "focus_ready": {"type": "boolean"},
+        "divergent_complete": {"type": "boolean"},
+        "categorization_complete": {"type": "boolean"},
+        "ranking_complete": {"type": "boolean"},
+        "next_step_defined": {"type": "boolean"},
+        "reflection_complete": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["stage_id"],
+  "additionalProperties": false
+}

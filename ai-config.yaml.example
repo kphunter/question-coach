@@ -1,5 +1,5 @@
 # Document Ingestion Pipeline Configuration
-# Copy to ingestion-config.yaml and configure before running ingestion.
+# Copy to ai-config.yaml and configure before running ingestion.
 
 # ============================================================================
 # DOCUMENT PROCESSING

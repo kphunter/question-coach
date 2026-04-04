@@ -1,5 +1,7 @@
 # Question Coach
 
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://mozilla.org/MPL/2.0/)
+
 A chat application that guides undergraduate students through the [Question Formulation Technique (QFT)](https://rightquestion.org/what-is-the-qft/) — a six-stage process for developing and refining research questions.
 
 Built on a RAG pipeline backed by [Qdrant](https://qdrant.tech/) and [Ollama](https://ollama.com/), with [Gemini](https://ai.google.dev/) for chat generation.
@@ -9,7 +11,7 @@ Built on a RAG pipeline backed by [Qdrant](https://qdrant.tech/) and [Ollama](ht
 | Concern | Tool |
 |---|---|
 | Embeddings (ingestion + search) | Ollama · `nomic-embed-text` (local, auto-pulled) |
-| Chat generation | Gemini API |
+| Chat generation | Gemini API (`gemini-2.5-flash-lite`) |
 | Vector store | Qdrant |
 | Frontend | React + Vite, served via Nginx |
 
@@ -106,7 +108,7 @@ Snapshots are saved inside the container at the path you specify (relative to `/
 
 ## Changing the embedding model
 
-The active model is set in `ingestion-config.yaml`:
+The active model is set in `ai-config.yaml`:
 
 ```yaml
 embedding:
@@ -122,7 +124,7 @@ To add a model to the auto-pull list, update the `entrypoint` of the `ollama-pul
 
 ```bash
 ./bin/ingest clear-all
-# update model in ingestion-config.yaml and collection_name in vector_db section
+# update model in ai-config.yaml and collection_name in vector_db section
 ./bin/ingest reindex-all
 ```
 
@@ -132,24 +134,33 @@ To add a model to the auto-pull list, update the `entrypoint` of the `ollama-pul
 
 ```
 inputs/
-├── docs/        # Source documents to index (.md, .html)
-├── fetched/     # Articles saved by ./bin/fetch-ingest
+├── docs/           # Source documents to index (.md, .html)
+└── fetched/        # Articles saved by ./bin/fetch-ingest
 agents/
-├── prompts/     # System prompt components and per-stage instructions
-├── CONFIG.json  # Agent tone and guardrail settings
+├── CONFIG.json     # Agent tone and guardrail settings
+└── prompts/
+    ├── SYSTEM_PROMPT.md   # Global agent rules (loaded at server startup)
+    ├── EXAMPLES.md        # Few-shot examples (appended to every request)
+    ├── STATE_SCHEMA.json  # State schema reference for stage handoff
+    └── stages/
+        ├── manifest.yaml  # Maps stage IDs to prompt files
+        └── STAGE_*.md     # Per-stage instructions (one file per stage/sub-stage)
 src/             # Ingestion pipeline (embeddings, chunking, vector store)
 api/             # FastAPI server
 frontend-react/  # React + Vite frontend
 ```
 
+---
+
 ## Customising the agent
 
-The system prompt is assembled from files in `agents/prompts/`. See [`agents/prompts/SYSTEM_PROMPT.md`](agents/prompts/SYSTEM_PROMPT.md) for the full assembly order, including how Qdrant context is injected at request time.
+The system prompt is assembled from files in `agents/prompts/`. See [`agents/prompts/README.md`](agents/prompts/README.md) for the full runtime assembly order and architecture notes.
 
 | To change … | Edit |
 |---|---|
-| Agent role and rules | `agents/QC-AGENT.md` |
-| Persona and tone | `agents/IDENTITY.md`, `agents/SOUL.md` |
-| Per-stage instructions | `agents/prompts/stages/stage-*.md` |
-| Guardrails | `agents/POLICIES.md` |
-| Audience context | `agents/USER.md` |
+| Global agent rules and guardrails | `agents/prompts/SYSTEM_PROMPT.md` |
+| Per-stage instructions | `agents/prompts/stages/STAGE_*.md` |
+| Stage → prompt file mapping | `agents/prompts/stages/manifest.yaml` |
+| Few-shot examples | `agents/prompts/EXAMPLES.md` |
+| Tone and config defaults | `agents/CONFIG.json` |
+| Knowledge base content | ingest documents into Qdrant |

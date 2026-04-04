@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -15,103 +19,9 @@ const defaultSettings = {
   use_gemini: true,
   search_strategy: "auto",
   search_limit: 5,
-  gemini_model: "gemini-2.5-flash",
+  gemini_model: "gemini-2.5-flash-lite",
 };
 
-const QFT_STEPS = [
-  {
-    number: 1,
-    title: "Question Focus",
-    body: "A statement, image, or scenario can spark curiosity without dictating a direction.",
-  },
-  {
-    number: 2,
-    title: "Produce Questions",
-    body: "Generate as many questions as you can. Don't stop to judge or answer, write every question as asked, and change any statements into questions.",
-  },
-  {
-    number: 3,
-    title: "Improve Questions",
-    body: "Label each question as open-ended (requires explanation, discussion, or exploration) or closed (can be answered with a single word or fact). Practice converting between types and reflecting on the qualities of each type.",
-  },
-  {
-    number: 4,
-    title: "Prioritize Questions",
-    body: "Choose your most important questions based on a defined set of criteria.",
-  },
-  {
-    number: 5,
-    title: "Next Steps",
-    body: "What comes next? Research, writing, an experiment, a conversation, or another stage of inquiry?",
-  },
-  {
-    number: 6,
-    title: "Reflect",
-    body: "Look back at the process itself. What changed in your thinking? Which step helped you most? How might you use the QFT in future?",
-  },
-];
-
-function QFTInfoPanel() {
-  const [openSteps, setOpenSteps] = useState(() => new Set([1]));
-  const [panelOpen, setPanelOpen] = useState(false);
-  return (
-    <div className="qft-info-panel">
-      <div className={`qft-outer-accordion${panelOpen ? " open" : ""}`}>
-        <button
-          className="qft-outer-btn"
-          onClick={() => setPanelOpen((v) => !v)}
-          type="button"
-        >
-          <span className="qft-info-title">What is QFT?</span>
-          <span className="material-symbols-rounded qft-chevron">
-            {panelOpen ? "expand_less" : "expand_more"}
-          </span>
-        </button>
-        {panelOpen && (
-          <>
-            <p className="qft-description">
-              The Question Formulation Technique (QFT) is a six-stage structured
-              process developed by the Right Question Institute to teach
-              learners how to formulate, refine, and prioritize their own
-              questions.
-            </p>
-            <ol className="qft-steps qft-steps-nested">
-              {QFT_STEPS.map((step) => {
-                const isOpen = openSteps.has(step.number);
-                return (
-                  <li
-                    key={step.number}
-                    className={`qft-step${isOpen ? " open" : ""}`}
-                  >
-                    <button
-                      className="qft-step-btn"
-                      onClick={() =>
-                        setOpenSteps((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(step.number)) next.delete(step.number);
-                          else next.add(step.number);
-                          return next;
-                        })
-                      }
-                      type="button"
-                    >
-                      <span className="qft-step-num">{step.number}</span>
-                      <span className="qft-step-title">{step.title}</span>
-                      <span className="material-symbols-rounded qft-chevron">
-                        {isOpen ? "expand_less" : "expand_more"}
-                      </span>
-                    </button>
-                    {isOpen && <div className="qft-step-body">{step.body}</div>}
-                  </li>
-                );
-              })}
-            </ol>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function SourcesToggle({ sources }) {
   const [open, setOpen] = useState(false);
@@ -158,6 +68,8 @@ const welcomeLines = rawWelcome.split("\n").filter((l) => l.trim());
 const welcomeTitle = welcomeLines[0].replace(/^#+\s*/, "");
 const welcomeBody = welcomeLines.slice(1).join(" ").trim();
 
+const MEMORY_KEY = "qc-memory";
+
 /** @returns {import('./stages').SharedMemory} */
 function initialMemory() {
   return {
@@ -169,9 +81,32 @@ function initialMemory() {
   };
 }
 
+function loadMemory() {
+  try {
+    const raw = localStorage.getItem(MEMORY_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+  return initialMemory();
+}
+
+function saveMemory(mem) {
+  try {
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(mem));
+  } catch {
+    // ignore
+  }
+}
+
 function hasStoredChat(stageId) {
   try {
-    return localStorage.getItem(`qc-chat-${stageId}`) !== null;
+    const raw = localStorage.getItem(`qc-chat-${stageId}`);
+    if (!raw) return false;
+    const msgs = JSON.parse(raw);
+    // Only consider a stage "stored" if it has more than just the initial
+    // instruction message — otherwise the intro sequence hasn't played yet.
+    return Array.isArray(msgs) && msgs.length > 1;
   } catch {
     return false;
   }
@@ -187,6 +122,31 @@ function loadStageChat(stageId, defaultMessages) {
   return defaultMessages;
 }
 
+/** Returns the last coach message from Stage 1, used to pass the question focus forward. */
+function getStage1Focus() {
+  try {
+    const raw = localStorage.getItem('qc-chat-question-focus');
+    if (!raw) return null;
+    const msgs = JSON.parse(raw);
+    // API responses have role "assistant" but no isCoach flag.
+    // Skip intro bubbles (isCoach: true) and the final "click Next stage"
+    // instruction, to land on the transition message containing the focus.
+    const focus = [...msgs].reverse().find(
+      (m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text)
+    );
+    if (!focus) return null;
+    // Keep only the focus sentence; drop the "Does this feel…" confirmation.
+    let text = focus.text.split(/does this feel/i)[0].trim().replace(/[.,!?]+$/, "").trim();
+    // Strip common preamble prefixes the model adds before the statement.
+    text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
+    // Capitalise first letter.
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+    return text || focus.text;
+  } catch {
+    return null;
+  }
+}
+
 function saveStageChat(stageId, msgs) {
   try {
     localStorage.setItem(`qc-chat-${stageId}`, JSON.stringify(msgs));
@@ -199,7 +159,7 @@ export default function App() {
   const API = useMemo(buildApiBase, []);
 
   // ── Core pipeline state ────────────────────────────────────────────────────
-  const [memory, setMemory] = useState(initialMemory);
+  const [memory, setMemory] = useState(loadMemory);
   const [stageIndex, setStageIndex] = useState(0);
 
   // ── UI state ───────────────────────────────────────────────────────────────
@@ -226,9 +186,9 @@ export default function App() {
 
   const stage = stages[stageIndex];
   const hasWorkspace = stage.inputType !== "textarea";
-  const hasInfoPanel = stage.id === "question-focus" || stage.id === "reflect";
 
   const messagesRef = useRef(null);
+  const inputRef = useRef(null);
   const introTimers = useRef([]);
   // Track whether stage 0 was a fresh (first-visit) load before messages were saved
   const initialWasFresh = useRef(!hasStoredChat(stages[0].id));
@@ -281,6 +241,11 @@ export default function App() {
     saveStageChat(stage.id, messages);
   }, [messages, stage.id]);
 
+  // ── Persist workspace memory (questions, classifications, etc.) ────────────
+  useEffect(() => {
+    saveMemory(memory);
+  }, [memory]);
+
   // ── Reset draft when changing stages ──────────────────────────────────────
   useEffect(() => {
     setDraftText("");
@@ -328,12 +293,17 @@ export default function App() {
 
     fetchStages();
     checkHealth();
-    const interval = window.setInterval(checkHealth, 5000);
+    const interval = window.setInterval(checkHealth, 60000);
     return () => {
       active = false;
       window.clearInterval(interval);
     };
   }, [API]);
+
+  // ── Refocus chat input after response ────────────────────────────────────
+  useEffect(() => {
+    if (!isProcessing) inputRef.current?.focus();
+  }, [isProcessing]);
 
   // ── Snackbar auto-dismiss ─────────────────────────────────────────────────
   useEffect(() => {
@@ -385,16 +355,32 @@ export default function App() {
   async function sendToBackend(bodyText) {
     if (!isConnected || isProcessing) return;
     const contextualMsg = `[QFT ${stage.heading}]\n\n${bodyText}`;
+
+    // Capture history BEFORE pushing the new user message
+    const history = messages
+      .filter((m) => m.text?.trim())
+      .map((m) => ({ role: m.isCoach || m.role === "assistant" ? "model" : "user", text: m.text }));
+
     pushMessage({ role: "user", text: bodyText, stageIndex });
     setIsProcessing(true);
     try {
+      let systemPrompt = stagePrompts[stage.promptId] ?? null;
+      if (stage.id !== 'question-focus') {
+        const focus = getStage1Focus();
+        if (focus) {
+          const prefix = `CONTEXT — Student's question focus from Stage 1:\n${focus}\n\n---\n\n`;
+          systemPrompt = systemPrompt ? prefix + systemPrompt : prefix.trim();
+        }
+      }
+
       const payload = {
         message: contextualMsg,
+        history,
         search_limit: Number(settings.search_limit),
         search_strategy: settings.search_strategy,
         use_gemini: settings.use_gemini,
         gemini_model: settings.gemini_model,
-        system_prompt: stagePrompts[stage.number] ?? null,
+        system_prompt: systemPrompt,
       };
       const response = await fetch(`${API}/chat`, {
         method: "POST",
@@ -411,7 +397,9 @@ export default function App() {
         throw new Error(detail);
       }
       const data = await response.json();
-      const parts = data.response
+      // Strip any [QFT ...] stage-prefix artifacts the model occasionally echoes
+      const cleanedResponse = data.response.replace(/\[QFT[^\]]*\]/gi, "").trim();
+      const parts = cleanedResponse
         .split("\n\n")
         .map((p) => p.trim())
         .filter(Boolean);
@@ -474,6 +462,7 @@ export default function App() {
     if (!window.confirm("Clear all chat history and start over?")) return;
     clearIntroTimers();
     stages.forEach((s) => localStorage.removeItem(`qc-chat-${s.id}`));
+    localStorage.removeItem(MEMORY_KEY);
     const s0 = stages[0];
     const defaultMsg = {
       id: uid(),
@@ -506,10 +495,10 @@ export default function App() {
     const filled = memory.questions.filter((q) => q.text.trim());
 
     stages.forEach((s, idx) => {
-      lines.push(`## Stage ${s.number}: ${s.name}`, "");
+      lines.push(`## ${s.heading}`, "");
 
       // Workspace output per stage
-      if (s.id === "produce-questions" && filled.length) {
+      if (s.id === "produce-questions-a" && filled.length) {
         lines.push("### Questions", "");
         filled.forEach((q, i) => lines.push(`${i + 1}. ${q.text.trim()}`));
         lines.push("");
@@ -541,15 +530,13 @@ export default function App() {
           lines.push("");
         }
       }
-      if (s.id === "prioritize-questions" && filled.length) {
-        const starredSet = new Set(memory.starred ?? []);
+      if (s.id === "prioritize-questions-b" && filled.length) {
         const ranked = memory.priorities
           .map((id) => filled.find((q) => q.id === id))
-          .filter(Boolean);
+          .filter(Boolean)
+          .slice(0, 3);
         lines.push("### Priority Ranking", "");
-        ranked.forEach((q, i) =>
-          lines.push(`${i + 1}. ${starredSet.has(q.id) ? "★ " : ""}${q.text}`),
-        );
+        ranked.forEach((q, i) => lines.push(`${i + 1}. ${q.text}`));
         lines.push("");
       }
 
@@ -629,7 +616,7 @@ export default function App() {
                   key={item.id}
                   className={`stage-pip ${state}`}
                   aria-label={item.name}
-                  title={item.name}
+                  title={item.heading}
                 >
                   {state === "completed" ? (
                     <span
@@ -639,7 +626,7 @@ export default function App() {
                       check
                     </span>
                   ) : (
-                    item.number
+                    item.pipLabel ?? item.number
                   )}
                 </div>
               );
@@ -667,6 +654,35 @@ export default function App() {
                 <p>{welcomeBody}</p>
               </div>
             )}
+
+            {stageIndex > 0 && (() => {
+              const isLateStage = stage.id === 'next-steps';
+              if (isLateStage) {
+                const top3 = memory.priorities
+                  .slice(0, 3)
+                  .map((id) => memory.questions.find((q) => q.id === id))
+                  .filter((q) => q?.text?.trim());
+                if (!top3.length) return null;
+                return (
+                  <div className="focus-bubble">
+                    <span className="focus-bubble-label">Top questions</span>
+                    <ol className="focus-bubble-list">
+                      {top3.map((q) => (
+                        <li key={q.id}>{q.text}</li>
+                      ))}
+                    </ol>
+                  </div>
+                );
+              }
+              if (stage.id === 'reflect') return null;
+              const focus = getStage1Focus();
+              return focus ? (
+                <div className="focus-bubble">
+                  <span className="focus-bubble-label">Question focus</span>
+                  <span className="focus-bubble-text">{focus}</span>
+                </div>
+              ) : null;
+            })()}
 
             {messages.map((message) => (
               <div
@@ -704,7 +720,36 @@ export default function App() {
                 </div>
               </div>
             )}
+
           </div>
+
+          {/* A/B part navigation (Stage 2 and Stage 4) */}
+          {[
+            ["produce-questions-a", "produce-questions-b"],
+            ["prioritize-questions-a", "prioritize-questions-b"],
+          ].find((pair) => pair.includes(stage.id)) && (() => {
+            const pair = [
+              ["produce-questions-a", "produce-questions-b"],
+              ["prioritize-questions-a", "prioritize-questions-b"],
+            ].find((p) => p.includes(stage.id));
+            return (
+              <div className="chat-history-pill-row">
+                {pair.map((id, i) => (
+                  <button
+                    key={id}
+                    className={`chat-history-pill ${stage.id === id ? "active" : "outline"}`}
+                    title={`Part ${i === 0 ? "A" : "B"}`}
+                    onClick={() =>
+                      goToStage(stages.findIndex((s) => s.id === id))
+                    }
+                    type="button"
+                  >
+                    {i === 0 ? "A" : "B"}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Input — always at bottom of chat frame */}
           <div className="chat-input-area">
@@ -713,6 +758,7 @@ export default function App() {
                 <textarea
                   className="md-textarea"
                   id="msgInput"
+                  ref={inputRef}
                   placeholder={
                     isConnected
                       ? stage.placeholder
@@ -748,7 +794,6 @@ export default function App() {
         <aside className="stage-panel">
           <div className="panel-card">
             <div className="panel-content">
-              {hasInfoPanel && <QFTInfoPanel />}
               {hasWorkspace && (
                 <stage.Component
                   input={stage.input(memory)}
@@ -756,6 +801,7 @@ export default function App() {
                   onSend={handleSubmitStage}
                   {...(stage.inputType === "categorize" && {
                     onQuestionClick: (text) => setDraftText(text),
+                    onSendText: (text) => sendToBackend(text),
                   })}
                 />
               )}
