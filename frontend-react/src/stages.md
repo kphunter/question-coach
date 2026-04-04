@@ -9,9 +9,19 @@ placeholder: Share your question focus or describe your assignment topic...
 
 Do you have a question focus, or do you need to develop one?
 
+### Message 1
+
 Tell me about your topic or assignment in the chat box below.
 
-### Message 1
+### Message 2
+
+You can click the "Next stage" button to go to the next stage.
+
+### Message 3
+
+The numbers in the top navigation bar show you what stage you're on.
+
+### Message 4
 
 [slow] Let me know if I can help clarify anything.
 
@@ -150,9 +160,7 @@ placeholder: Describe how your questions will shape your next steps...
 
 ### Instruction
 
-You have your top three questions - now what?
-
-Can you tell me how you will use them in the next part of your assignment or inquiry?
+Your top three questions may or may not be related, that's ok. What might they help you explore in the next part of your assignment or inquiry?
 
 
 

@@ -63,6 +63,16 @@ function buildApiBase() {
   return import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 }
 
+// ── Stage pip groups (merged display for multi-part stages) ───────────────
+const PIP_GROUPS = [
+  { label: "1", ids: ["question-focus"] },
+  { label: "2", ids: ["produce-questions-a", "produce-questions-b"] },
+  { label: "3", ids: ["improve-questions"] },
+  { label: "4", ids: ["prioritize-questions-a", "prioritize-questions-b"] },
+  { label: "5", ids: ["next-steps"] },
+  { label: "6", ids: ["reflect"] },
+];
+
 // ── Welcome card content (from welcome.md) ────────────────────────────────
 const welcomeLines = rawWelcome.split("\n").filter((l) => l.trim());
 const welcomeTitle = welcomeLines[0].replace(/^#+\s*/, "");
@@ -183,6 +193,8 @@ export default function App() {
   });
   const [settings] = useState(defaultSettings);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [highlightNextBtn, setHighlightNextBtn] = useState(false);
+  const [highlightPips, setHighlightPips] = useState(false);
 
   const stage = stages[stageIndex];
   const hasWorkspace = stage.inputType !== "textarea";
@@ -196,6 +208,39 @@ export default function App() {
   function clearIntroTimers() {
     introTimers.current.forEach(clearTimeout);
     introTimers.current = [];
+  }
+
+  /** Flash the Next Stage button twice when Stage 1's Message 2 appears. */
+  function scheduleStage0Highlight(parts) {
+    if (parts.length < 2) return;
+    let elapsed = 0;
+    const timings = parts.map((raw) => {
+      elapsed += raw.startsWith("[slow]") ? SECONDARY_DELAY_MS : INTRO_DELAY_MS;
+      return elapsed;
+    });
+    const showAt = timings[1]; // when Message 2 appears
+    // Flash Next Stage button twice starting at Message 2
+    [
+      [showAt,          true],
+      [showAt + 1000,   false],
+      [showAt + 2000,   true],
+      [showAt + 3000,   false],
+    ].forEach(([delay, value]) => {
+      introTimers.current.push(setTimeout(() => setHighlightNextBtn(value), delay));
+    });
+
+    // Flash all stage pips twice starting at Message 3
+    const pipsAt = timings[2];
+    if (pipsAt != null) {
+      [
+        [pipsAt,          true],
+        [pipsAt + 1000,   false],
+        [pipsAt + 2000,   true],
+        [pipsAt + 3000,   false],
+      ].forEach(([delay, value]) => {
+        introTimers.current.push(setTimeout(() => setHighlightPips(value), delay));
+      });
+    }
   }
 
   function scheduleIntroParts(parts, stageIdx, delayMs) {
@@ -232,6 +277,7 @@ export default function App() {
   useEffect(() => {
     if (initialWasFresh.current && stages[0].messageParts?.length > 0) {
       scheduleIntroParts(stages[0].messageParts, 0, INTRO_DELAY_MS);
+      scheduleStage0Highlight(stages[0].messageParts);
     }
     return () => clearIntroTimers();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -372,6 +418,18 @@ export default function App() {
           systemPrompt = systemPrompt ? prefix + systemPrompt : prefix.trim();
         }
       }
+      if (stage.id === 'next-steps') {
+        const top3 = memory.priorities
+          .slice(0, 3)
+          .map((id) => memory.questions.find((q) => q.id === id))
+          .filter((q) => q?.text?.trim())
+          .map((q, i) => `${i + 1}. ${q.text.trim()}`)
+          .join('\n');
+        if (top3) {
+          const prefix = `CONTEXT — Student's top 3 questions from Stage 4:\n${top3}\n\n---\n\n`;
+          systemPrompt = systemPrompt ? prefix + systemPrompt : prefix.trim();
+        }
+      }
 
       const payload = {
         message: contextualMsg,
@@ -475,8 +533,11 @@ export default function App() {
     setStageIndex(0);
     setMessages([defaultMsg]);
     setMemory(initialMemory());
+    setHighlightNextBtn(false);
+    setHighlightPips(false);
     if (s0.messageParts?.length > 0) {
       scheduleIntroParts(s0.messageParts, 0, INTRO_DELAY_MS);
+      scheduleStage0Highlight(s0.messageParts);
     }
   }
 
@@ -603,22 +664,28 @@ export default function App() {
             </span>
             Knowledge Base
           </a>
-          <div className="stage-pips" aria-label="Stage progress">
-            {stages.map((item, index) => {
-              const state =
-                index < stageIndex
-                  ? "completed"
-                  : index === stageIndex
-                    ? "active"
-                    : "";
+          <div className={`stage-pips${highlightPips ? " pips-highlighted" : ""}`} aria-label="Stage progress">
+            {PIP_GROUPS.map((group) => {
+              const indices = group.ids.map((id) =>
+                stages.findIndex((s) => s.id === id),
+              );
+              const minIdx = Math.min(...indices);
+              const maxIdx = Math.max(...indices);
+              const isActive = stageIndex >= minIdx && stageIndex <= maxIdx;
+              const isCompleted = stageIndex > maxIdx;
+              const state = isCompleted ? "completed" : isActive ? "active" : "";
+              const firstStage = stages[minIdx];
               return (
                 <div
-                  key={item.id}
+                  key={group.label}
                   className={`stage-pip ${state}`}
-                  aria-label={item.name}
-                  title={item.heading}
+                  title={firstStage?.heading ?? group.label}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => goToStage(minIdx)}
+                  onKeyDown={(e) => e.key === "Enter" && goToStage(minIdx)}
                 >
-                  {state === "completed" ? (
+                  {isCompleted ? (
                     <span
                       className="material-symbols-rounded"
                       style={{ fontSize: 13 }}
@@ -626,7 +693,7 @@ export default function App() {
                       check
                     </span>
                   ) : (
-                    item.pipLabel ?? item.number
+                    group.label
                   )}
                 </div>
               );
@@ -831,7 +898,7 @@ export default function App() {
                 </button>
               ) : (
                 <button
-                  className="md-tonal-btn"
+                  className={`md-tonal-btn${highlightNextBtn && stageIndex === 0 ? " next-stage-highlighted" : ""}`}
                   onClick={() => goToStage(stageIndex + 1)}
                   type="button"
                 >

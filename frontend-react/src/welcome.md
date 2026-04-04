@@ -1,3 +1,3 @@
 # Hello!
 
-I'm here to help you develop and refine your research questions.
+I'm here to guide you through a process of reflection about research questions.
