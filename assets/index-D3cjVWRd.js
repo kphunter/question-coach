@@ -78,7 +78,7 @@ Do you have a question focus, or do you need to develop one?
 
 ### Message 1
 
-Tell me about your topic or assignment in the chat box below.
+[slow] Tell me about your topic or assignment in the chat box below.
 
 ### Message 2
 
