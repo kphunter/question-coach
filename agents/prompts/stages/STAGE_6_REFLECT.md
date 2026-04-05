@@ -37,7 +37,7 @@ Never offer interpretation, validation phrases ("That's insightful"), or a summa
 
 ### If responses are minimal
 Prompt gently with:
-"What would you tell someone trying this for the first time?"
+"What would you tell someone trying this process for the first time?"
 
 ### Length
 Max 100 words.

@@ -656,7 +656,10 @@ textarea {
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        box-shadow 0.15s;
 }
 
 .chat-history-pill.active {
@@ -788,11 +791,11 @@ textarea {
 }
 
 .qft-description {
-  margin: 0;
-  padding: 12px 18px;
-  font-size: 13px;
-  color: var(--md-on-surface-variant);
-  border-top: 1px solid var(--md-outline-variant);
+    margin: 0;
+    padding: 12px 18px;
+    font-size: 13px;
+    color: var(--md-on-surface-variant);
+    border-top: 1px solid var(--md-outline-variant);
 }
 
 .qft-steps-nested {
@@ -1003,27 +1006,47 @@ textarea {
 }
 
 .ql-add-row {
-    width: 32px;
-    height: 32px;
     display: grid;
-    place-items: center;
-    margin: 6px auto 0;
-    border: 1px solid var(--md-outline);
-    border-radius: 50%;
+    grid-template-columns: 32px 1fr;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    margin-left: 2px;
     background: transparent;
-    color: var(--md-on-surface-variant);
+    border: none;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    width: 100%;
+    padding: 0;
+    color: var(--md-on-surface-variant);
 }
 
-.ql-add-row:hover {
+.ql-add-row:hover .ql-add-icon {
     background: var(--md-surface-container);
     color: var(--md-on-surface);
     border-color: var(--md-on-surface-variant);
 }
 
-.ql-add-row .material-symbols-rounded {
-    font-size: 18px;
+.ql-add-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--md-outline);
+    border-radius: 50%;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        border-color 0.15s;
+}
+
+.ql-add-icon .material-symbols-rounded {
+    font-size: 16px;
+}
+
+.ql-add-hint {
+    font-size: 12px;
+    color: var(--md-outline);
+    text-align: left;
 }
 
 .ql-submit-row {
@@ -1126,6 +1149,12 @@ textarea {
 .rewrite-textarea {
     width: 100%;
     resize: none;
+}
+
+.rewrite-hint {
+    font-size: 12px;
+    color: var(--md-outline);
+    margin: 0;
 }
 
 .rewrite-actions {

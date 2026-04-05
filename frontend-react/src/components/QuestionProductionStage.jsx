@@ -113,10 +113,12 @@ export default function QuestionProductionStage({ input, onSubmit, onSend }) {
         <button
           className="ql-add-row"
           onClick={() => appendQuestion()}
-          title="Add question"
           type="button"
         >
-          <span className="material-symbols-rounded">add</span>
+          <span className="ql-add-icon">
+            <span className="material-symbols-rounded">add</span>
+          </span>
+          <span className="ql-add-hint">Enter or return to add a new question</span>
         </button>
       </div>
 

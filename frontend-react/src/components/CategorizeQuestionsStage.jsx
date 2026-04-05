@@ -162,10 +162,7 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
         <h3>Classify questions</h3>
         <p>
           Drag each question into Open or Closed.{' '}
-          {submitted
-            ? <span className="hint-inline">Tap a question to copy it to the rewrite question box.</span>
-            : onQuestionClick && <span className="hint-inline">Tap a question to copy it to the chat box.</span>
-          }
+          {!submitted && onQuestionClick && <span className="hint-inline">Tap a question to copy it to the chat box.</span>}
         </p>
       </div>
 
@@ -204,8 +201,9 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRewriteSubmit() }
             }}
-            rows={3}
+            rows={4}
           />
+          <p className="rewrite-hint">Tap a question above to copy it to this box.</p>
           <div className="rewrite-actions">
             <button
               className="md-tonal-btn"

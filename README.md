@@ -34,21 +34,15 @@ export GEMINI_API_KEY=your-key-here
 Docker Compose reads the key directly from your shell — no `.env` file needed.
 Add the export to your shell profile (`~/.zshrc`, `~/.bashrc`) to make it permanent.
 
-### 2. Start services
+### 2. Start the app
 
 ```bash
 docker compose up --build -d
 ```
 
-This starts Qdrant, Ollama, the API, and the frontend. On the first run Docker pulls the `ollama/ollama` image (~2–3 GB, cached after that). Once Ollama is up, a one-shot `ollama-pull` container downloads `nomic-embed-text` (~274 MB) and exits — subsequent starts skip the download because the model is stored in a named volume.
+This starts the API and frontend. The knowledge-base services (Qdrant, Ollama) live in a separate compose file and are started automatically by the ingestion scripts in the next step.
 
-Watch progress:
-
-```bash
-docker compose logs -f ollama ollama-pull
-```
-
-### 3. Index your documents
+### 3. Start the knowledge base and index your documents
 
 Place `.md` or `.html` files in `inputs/docs/`, then:
 
@@ -56,7 +50,15 @@ Place `.md` or `.html` files in `inputs/docs/`, then:
 ./bin/ingest reindex-all
 ```
 
-The script waits for Qdrant and Ollama to be ready before running, so it is safe to call immediately after `docker compose up`.
+This script starts the KB stack (`docker-compose.kb.yml`) — Qdrant, Ollama, and a one-shot `ollama-pull` container that downloads `nomic-embed-text` (~274 MB, cached in a named volume after the first run) — then runs ingestion once those services are healthy.
+
+Watch KB startup progress:
+
+```bash
+docker compose -f docker-compose.kb.yml logs -f ollama ollama-pull
+```
+
+> **Without the KB stack running**, the API falls back to direct Gemini chat with no retrieval. Run `./bin/ingest` at least once to enable RAG.
 
 ### 4. Open the app
 
@@ -100,6 +102,12 @@ All commands run inside Docker via `./bin/ingest <command>`.
 
 # Restore the vector index from a snapshot
 ./bin/ingest restore path/to/my-backup.snapshot
+
+# Add or update a single document
+./bin/ingest add-update inputs/docs/my-file.md
+
+# Check collection status
+./bin/ingest check-collection
 ```
 
 Snapshots are saved inside the container at the path you specify (relative to `/app`). Because the `inputs/` directory is mounted as a volume, saving to `inputs/snapshots/` (the default) writes directly to your local filesystem.
@@ -118,7 +126,7 @@ embedding:
     # gemma3:2b                 — 2048 dims, ~1.7 GB
 ```
 
-To add a model to the auto-pull list, update the `entrypoint` of the `ollama-pull` service in `docker-compose.yml`.
+To add a model to the auto-pull list, update the `entrypoint` of the `ollama-pull` service in `docker-compose.kb.yml`.
 
 **Switching models changes vector dimensions.** Clear the old collection first:
 
@@ -133,6 +141,8 @@ To add a model to the auto-pull list, update the `entrypoint` of the `ollama-pul
 ## Folder structure
 
 ```
+docker-compose.yml       # App stack: API + frontend (+ Caddy for production)
+docker-compose.kb.yml    # KB stack: Qdrant + Ollama + ingestion service
 inputs/
 ├── docs/           # Source documents to index (.md, .html)
 └── fetched/        # Articles saved by ./bin/fetch-ingest
