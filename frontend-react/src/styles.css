@@ -92,7 +92,12 @@ textarea {
 .app-bar-trailing {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+}
+
+.app-bar-trailing .md-text-btn {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .app-bar-kb-link {
@@ -100,6 +105,7 @@ textarea {
     text-decoration: none;
     white-space: nowrap;
     color: var(--md-on-primary);
+    margin-right: 12px;
 }
 
 .app-bar .icon-btn {

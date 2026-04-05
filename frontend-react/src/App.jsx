@@ -656,13 +656,24 @@ export default function App() {
             <span className="app-bar-title">Question Coach</span>
             <span className="app-bar-subtitle">A guide for structured brainstorming</span>
           </div>
-        </div>
-
-        <div className="app-bar-trailing">
           <span
             className={`status-dot ${isConnected ? "connected" : ""}`}
             aria-hidden="true"
           />
+        </div>
+
+        <div className="app-bar-trailing">
+          <a
+            className="md-text-btn app-bar-kb-link"
+            href="/cards.md"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            <span className="material-symbols-rounded mini-icon">
+              style
+            </span>
+            Cards
+          </a>
           <a
             className="md-text-btn app-bar-kb-link"
             href="https://etec51165a-knowledgebase-aicoach.figma.site/"
