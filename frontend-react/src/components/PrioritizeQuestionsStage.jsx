@@ -90,7 +90,7 @@ export default function PrioritizeQuestionsStage({ input, onSubmit, onSend }) {
       </div>
 
       <div className="stage-actions">
-        <button className="md-tonal-btn" onClick={onSend} type="button">
+        <button className="md-tonal-btn" onClick={onSend} disabled={orderedQuestions.length === 0} type="button">
           Submit priorities
           <span className="material-symbols-rounded mini-icon">send</span>
         </button>

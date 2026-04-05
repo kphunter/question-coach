@@ -187,6 +187,7 @@ export default function App() {
       text: s0.instruction,
       stageIndex: 0,
       isCoach: true,
+      isInstruction: true,
       createdAt: new Date().toISOString(),
     };
     return loadStageChat(s0.id, [defaultMsg]);
@@ -219,24 +220,28 @@ export default function App() {
       return elapsed;
     });
     const showAt = timings[1]; // when Message 2 appears
-    // Flash Next Stage button twice starting at Message 2
+    // Flash Next Stage button three times at 0.5s intervals starting at Message 2
     [
       [showAt,          true],
-      [showAt + 1000,   false],
+      [showAt +  500,   false],
+      [showAt + 1000,   true],
+      [showAt + 1500,   false],
       [showAt + 2000,   true],
-      [showAt + 3000,   false],
+      [showAt + 2500,   false],
     ].forEach(([delay, value]) => {
       introTimers.current.push(setTimeout(() => setHighlightNextBtn(value), delay));
     });
 
-    // Flash all stage pips twice starting at Message 3
+    // Flash all stage pips three times at 0.5s intervals starting at Message 3
     const pipsAt = timings[2];
     if (pipsAt != null) {
       [
         [pipsAt,          true],
-        [pipsAt + 1000,   false],
+        [pipsAt +  500,   false],
+        [pipsAt + 1000,   true],
+        [pipsAt + 1500,   false],
         [pipsAt + 2000,   true],
-        [pipsAt + 3000,   false],
+        [pipsAt + 2500,   false],
       ].forEach(([delay, value]) => {
         introTimers.current.push(setTimeout(() => setHighlightPips(value), delay));
       });
@@ -381,6 +386,7 @@ export default function App() {
       text: next.instruction,
       stageIndex: nextIndex,
       isCoach: true,
+      isInstruction: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -528,6 +534,7 @@ export default function App() {
       text: s0.instruction,
       stageIndex: 0,
       isCoach: true,
+      isInstruction: true,
       createdAt: new Date().toISOString(),
     };
     setStageIndex(0);
@@ -645,14 +652,17 @@ export default function App() {
           <span className="material-symbols-rounded app-bar-icon">
             psychology_alt
           </span>
-          <span className="app-bar-title">Question Coach</span>
+          <div className="app-bar-title-group">
+            <span className="app-bar-title">Question Coach</span>
+            <span className="app-bar-subtitle">A guide for structured brainstorming</span>
+          </div>
+        </div>
+
+        <div className="app-bar-trailing">
           <span
             className={`status-dot ${isConnected ? "connected" : ""}`}
             aria-hidden="true"
           />
-        </div>
-
-        <div className="app-bar-trailing">
           <a
             className="md-text-btn app-bar-kb-link"
             href="https://etec51165a-knowledgebase-aicoach.figma.site/"
@@ -751,7 +761,10 @@ export default function App() {
               ) : null;
             })()}
 
-            {messages.map((message) => (
+            {messages.map((message) => {
+              const msgStage = stages[message.stageIndex];
+              const isInstruction = message.isInstruction && msgStage?.image;
+              return (
               <div
                 className={`msg-row ${message.role}`}
                 key={message.id}
@@ -759,6 +772,13 @@ export default function App() {
               >
                 <div className="msg-body">
                   <div className="msg-bubble">
+                    {isInstruction && (
+                      <img
+                        src={msgStage.image}
+                        alt={msgStage.imageAlt}
+                        className="msg-stage-image"
+                      />
+                    )}
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {message.text}
                     </ReactMarkdown>
@@ -774,7 +794,8 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {isProcessing && (
               <div className="msg-row assistant">

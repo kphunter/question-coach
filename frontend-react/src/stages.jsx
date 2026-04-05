@@ -7,6 +7,9 @@ import DefaultStage from "./components/DefaultStage";
 import QuestionProductionStage from "./components/QuestionProductionStage";
 import CategorizeQuestionsStage from "./components/CategorizeQuestionsStage";
 import PrioritizeQuestionsStage from "./components/PrioritizeQuestionsStage";
+import QuestionListReadOnly from "./components/QuestionListReadOnly";
+import divergentThinkingCard from "./divergent-thinking-card.png";
+import reflectiveThinkingCard from "./reflective-thinking-card.png";
 
 /**
  * @typedef {{ id: string, text: string }} Question
@@ -121,6 +124,8 @@ const stageLogic = {
 
   'produce-questions-b': {
     promptId: 7,
+    image: divergentThinkingCard,
+    imageAlt: "Divergent Thinking Card",
     ...produceQuestionsLogic,
   },
 
@@ -158,14 +163,16 @@ const stageLogic = {
 
   'prioritize-questions-a': {
     promptId: 8,
-    inputType: 'textarea',
-    input: null,
+    image: reflectiveThinkingCard,
+    imageAlt: "Reflective Thinking Card",
+    inputType: 'question-list-readonly',
+    input: (memory) => ({ questions: memory.questions.filter((q) => q.text.trim()) }),
     output: (result, memory) => ({
       ...memory,
       stageNotes: { ...memory.stageNotes, 'prioritize-questions-a': result.text },
     }),
     serialize: (_memory, draftText) => draftText?.trim() ?? '',
-    Component: DefaultStage,
+    Component: QuestionListReadOnly,
   },
 
   'prioritize-questions-b': {
