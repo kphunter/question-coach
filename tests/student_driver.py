@@ -262,6 +262,11 @@ class QCClient:
         resp = self._http.post(f"{self.base}/chat", json=payload).raise_for_status()
         return resp.json()["response"]
 
+    def submit_session(self, session: dict) -> None:
+        resp = self._http.post(f"{self.base}/api/sessions", json={"session": session})
+        result = resp.json()
+        print_info(f"Session submitted: {result.get('status', '?')}")
+
     def close(self):
         self._http.close()
 
@@ -382,8 +387,8 @@ def _exchange(student_msg: str, stage_id: str,
     print_student(student.name, student_msg)
     coach_reply = coach.chat(student_msg, stage_id, state, history)
     history += [
-        {"role": "user",  "text": student_msg},
-        {"role": "model", "text": coach_reply},
+        {"role": "user",  "text": student_msg, "stage_id": stage_id},
+        {"role": "model", "text": coach_reply, "stage_id": stage_id},
     ]
     print_coach(coach_reply)
     return coach_reply
@@ -553,6 +558,43 @@ def run_stage_6(persona: dict, student: StudentAgent, coach: QCClient,
 
 # ── Session orchestrator ───────────────────────────────────────────────────────
 
+def _build_session_payload(persona_key: str, state: WorkspaceState,
+                           history: list[dict], completed: bool) -> dict:
+    """Build a session dict compatible with the /api/sessions endpoint."""
+    import datetime
+    from collections import defaultdict
+    now = datetime.datetime.utcnow().isoformat()
+
+    # Group history messages by stage_id to produce per-stage chat arrays.
+    stage_chats: dict[str, list] = defaultdict(list)
+    for msg in history:
+        sid = msg.get("stage_id", "unknown")
+        stage_chats[sid].append({"role": msg["role"], "text": msg["text"]})
+
+    stages = [
+        {"stage_id": sid, "chat": chat, "entered_at": now, "completed_at": now}
+        for sid, chat in stage_chats.items()
+    ]
+
+    return {
+        "schema_version": "1",
+        "session_id": uid(),
+        "started_at": now,
+        "completed_at": now if completed else None,
+        "completed": completed,
+        "model": COACH_GEMINI_MODEL,
+        "persona": persona_key,
+        "question_focus": state.question_focus or None,
+        "error_events": [],
+        "stages": stages,
+        "questions": state.questions,
+        "classifications": state.classifications,
+        "priorities": state.priorities,
+        "card_divergent": state.card_divergent,
+        "card_reflective": state.card_reflective,
+    }
+
+
 def run_session(persona_key: str, api_base: str,
                 prompt_override: Optional[tuple[str, str]] = None) -> bool:
     persona = PERSONAS[persona_key]
@@ -560,6 +602,7 @@ def run_session(persona_key: str, api_base: str,
     coach = QCClient(api_base, prompt_override=prompt_override)
     state = WorkspaceState()
     history: list[dict] = []
+    completed = False
 
     print_header(f"Session: {persona['display']}  ·  Topic: {persona['topic']}")
 
@@ -578,6 +621,7 @@ def run_session(persona_key: str, api_base: str,
         run_stage_5(persona, student, coach, state, history)
         run_stage_6(persona, student, coach, state, history)
 
+        completed = True
         print_pass(f"Session complete for {persona['display']}")
         return True
 
@@ -588,6 +632,11 @@ def run_session(persona_key: str, api_base: str,
         return False
 
     finally:
+        try:
+            session = _build_session_payload(persona_key, state, history, completed)
+            coach.submit_session(session)
+        except Exception as exc:
+            print_error(f"Session submission failed: {exc}")
         coach.close()
 
 
