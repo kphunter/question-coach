@@ -10,7 +10,7 @@ import re
 from html.parser import HTMLParser
 import html
 
-from html_to_markdown import convert_to_markdown
+from markdownify import markdownify as convert_to_markdown
 
 from .base_handler import BaseHandler
 from ..document_processor import ExtractedContent
