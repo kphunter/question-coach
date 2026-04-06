@@ -15,11 +15,10 @@ Do you have a question focus, or do you need to develop one?
 
 ### Message 2
 
-You can click the "Next stage" button to go to the next stage.
 
 ### Message 3
 
-The numbers in the top navigation bar show you what stage you're on.
+
 
 ### Message 4
 
@@ -177,7 +176,7 @@ placeholder: Share your reflections on the question formulation process...
 
 This is the last stage!
 
-I'd like to ask three questions about this process to help you reflect on what changed in your thinking.
+I'd like to ask three questions about this process to help you reflect on your journey.
 
 ### Message 1
 

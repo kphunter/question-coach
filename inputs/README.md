@@ -6,9 +6,10 @@ All source material for the knowledge base lives under this directory.
 
 ```
 inputs/
-├── docs/       # Markdown and other authored notes
-├── fetched/    # Articles captured with ./bin/fetch-ingest
-└── snapshots/  # Vector store snapshots (created via ./bin/ingest snapshot)
+├── docs/        # Markdown and other authored notes
+├── fetched/     # Articles captured with ./bin/fetch-ingest
+├── links.txt    # URLs to fetch in bulk (one per line, # for comments)
+└── snapshots/   # Vector store snapshots (created via ./bin/ingest snapshot)
 ```
 
 ## Workflow
@@ -17,10 +18,17 @@ inputs/
    Drop Markdown (or other supported formats) into `docs/`.
 
 2. **Fetch web content**  
-   Run `./bin/fetch-ingest <url>` to save structured JSON into `fetched/`.
+   Pass URLs directly, or add them to `links.txt` and run with no arguments:
+   ```
+   ./bin/fetch-ingest 'https://example.com/article'   # single URL
+   ./bin/fetch-ingest                                   # reads inputs/links.txt
+   ```
+   Fetched articles are saved as structured JSON into `fetched/`. Both forms
+   automatically run `process-new` afterwards, so no separate ingest step is needed.
 
-3. **Incremental ingest**  
-   Run `./bin/ingest process-new` to embed only the documents that are new or have changed.
+3. **Incremental ingest (manual)**  
+   Run `./bin/ingest process-new` to embed only documents that are new or have changed,
+   without re-fetching anything.
 
 4. **Full rebuild**  
    Run `./bin/ingest reindex-all` to wipe and reprocess everything from scratch.

@@ -74,9 +74,8 @@ const PIP_GROUPS = [
 ];
 
 // ── Welcome card content (from welcome.md) ────────────────────────────────
-const welcomeLines = rawWelcome.split("\n").filter((l) => l.trim());
-const welcomeTitle = welcomeLines[0].replace(/^#+\s*/, "");
-const welcomeBody = welcomeLines.slice(1).join(" ").trim();
+const welcomeTitle = rawWelcome.split("\n")[0].replace(/^#+\s*/, "").trim();
+const welcomeBody = rawWelcome.replace(/^[^\n]*\n/, "").trim();
 
 // ── Session management ─────────────────────────────────────────────────────
 const SESSION_KEY = "qc-session";
@@ -549,6 +548,21 @@ export default function App() {
       if (focus) setQuestionFocus(focus);
     }
 
+    // Record behavioural telemetry for the stage being exited
+    setErrorEvents((prev) => [
+      ...prev,
+      {
+        type: "stage_exit",
+        stage_id: stage.id,
+        at: now,
+        duration_ms: stageState[stage.id]?.entered_at
+          ? new Date(now).getTime() - new Date(stageState[stage.id].entered_at).getTime()
+          : null,
+        questions_count: memory.questions.filter((q) => q.text.trim()).length,
+        chat_turns: messages.filter((m) => m.role === "user").length,
+      },
+    ]);
+
     const defaultMsg = {
       id: uid(),
       role: "assistant",
@@ -937,7 +951,7 @@ export default function App() {
             {stageIndex === 0 && (
               <div className="welcome-card">
                 <h2>{welcomeTitle}</h2>
-                <p>{welcomeBody}</p>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{welcomeBody}</ReactMarkdown>
               </div>
             )}
 
@@ -995,7 +1009,13 @@ export default function App() {
                       <button
                         className="draw-card-btn"
                         type="button"
-                        onClick={() => setShowCardPicker(true)}
+                        onClick={() => {
+                          setShowCardPicker(true);
+                          setErrorEvents((prev) => [
+                            ...prev,
+                            { type: "card_picker_opened", stage_id: stage.id, at: new Date().toISOString() },
+                          ]);
+                        }}
                       >
                         <span className="material-symbols-rounded mini-icon">style</span>
                         Draw a card
