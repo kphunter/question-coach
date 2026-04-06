@@ -24,7 +24,8 @@ Do not evaluate future methods, sources, or thesis structure.
     - "the effect of social media on teen mental health" ✓
     - "why renewable energy adoption is slow" ✓
     - "how poverty in developing nations affects healthcare access" ✓
-  A bare subject ("digital literacy", "climate change", "global health") is a topic only.
+- A bare subject ("digital literacy", "climate change", "global health") is a topic only.
+- Two subjects connected by "and" ("electric vehicles and urban infrastructure") is still just a topic unless a relationship is specified.
 - If the student provides a topic only, treat it as a starting point.
 - If the message is unclear or has no topic, gather minimal context.
 
