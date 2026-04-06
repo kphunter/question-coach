@@ -298,8 +298,6 @@ export default function App() {
   const [settings] = useState(defaultSettings);
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showCardPicker, setShowCardPicker] = useState(false);
-  const [highlightNextBtn, setHighlightNextBtn] = useState(false);
-  const [highlightPips, setHighlightPips] = useState(false);
 
   const stage = stages[stageIndex];
   const hasWorkspace = stage.inputType !== "textarea";
@@ -325,41 +323,6 @@ export default function App() {
   function clearIntroTimers() {
     introTimers.current.forEach(clearTimeout);
     introTimers.current = [];
-  }
-
-  /** Flash the Next Stage button and pips when Stage 1's messages 2 and 3 appear. */
-  function scheduleStage0Highlight(parts) {
-    if (parts.length < 2) return;
-    let elapsed = 0;
-    const timings = parts.map((raw) => {
-      elapsed += raw.startsWith("[slow]") ? SECONDARY_DELAY_MS : INTRO_DELAY_MS;
-      return elapsed;
-    });
-    const showAt = timings[1];
-    [
-      [showAt,          true],
-      [showAt +  500,   false],
-      [showAt + 1000,   true],
-      [showAt + 1500,   false],
-      [showAt + 2000,   true],
-      [showAt + 2500,   false],
-    ].forEach(([delay, value]) => {
-      introTimers.current.push(setTimeout(() => setHighlightNextBtn(value), delay));
-    });
-
-    const pipsAt = timings[2];
-    if (pipsAt != null) {
-      [
-        [pipsAt,          true],
-        [pipsAt +  500,   false],
-        [pipsAt + 1000,   true],
-        [pipsAt + 1500,   false],
-        [pipsAt + 2000,   true],
-        [pipsAt + 2500,   false],
-      ].forEach(([delay, value]) => {
-        introTimers.current.push(setTimeout(() => setHighlightPips(value), delay));
-      });
-    }
   }
 
   function scheduleIntroParts(parts, stageIdx, delayMs) {
@@ -403,7 +366,6 @@ export default function App() {
   useEffect(() => {
     if (initialWasFresh.current && stages[0].messageParts?.length > 0) {
       scheduleIntroParts(stages[0].messageParts, 0, INTRO_DELAY_MS);
-      scheduleStage0Highlight(stages[0].messageParts);
     }
     return () => clearIntroTimers();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -769,7 +731,6 @@ export default function App() {
 
     if (s0.messageParts?.length > 0) {
       scheduleIntroParts(s0.messageParts, 0, INTRO_DELAY_MS);
-      scheduleStage0Highlight(s0.messageParts);
     }
   }
 
@@ -897,7 +858,7 @@ export default function App() {
             </span>
             Knowledge Base
           </a>
-          <div className={`stage-pips${highlightPips ? " pips-highlighted" : ""}`} aria-label="Stage progress">
+          <div className="stage-pips" aria-label="Stage progress">
             {PIP_GROUPS.map((group) => {
               const indices = group.ids.map((id) =>
                 stages.findIndex((s) => s.id === id),
@@ -1158,7 +1119,7 @@ export default function App() {
                 </button>
               ) : (
                 <button
-                  className={`md-tonal-btn${highlightNextBtn && stageIndex === 0 ? " next-stage-highlighted" : ""}`}
+                  className="md-tonal-btn"
                   onClick={() => goToStage(stageIndex + 1)}
                   type="button"
                 >

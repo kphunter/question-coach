@@ -7,22 +7,11 @@ placeholder: Share your question focus or describe your assignment topic...
 
 ### Instruction
 
-Do you have a question focus, or do you need to develop one?
+This stage is about identifying or developing a question focus (QFocus). Do you have a question focus, or do you need to develop one?
 
 ### Message 1
 
 [slow] Tell me about your topic or assignment in the chat box below.
-
-### Message 2
-
-
-### Message 3
-
-
-
-### Message 4
-
-[slow] Let me know if I can help clarify anything.
 
 
 
@@ -63,7 +52,7 @@ placeholder: Ask or chat about the task...
 
 ### Instruction
 
-Now, draw a **Divergent Thinking Card**. Divergent Thinking Cards are designed to help you generate different questions from the ones you already have.
+Now, draw a **Divergent Thinking Card**. These cards are designed to help you generate different questions from the ones you already have.
 
 ### Message 1
 

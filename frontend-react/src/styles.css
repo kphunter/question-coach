@@ -341,17 +341,6 @@ textarea {
     color: var(--md-on-surface);
 }
 
-.next-stage-highlighted {
-    background: var(--md-primary);
-    color: var(--md-on-primary);
-}
-
-.pips-highlighted .stage-pip {
-    background: var(--md-primary);
-    color: var(--md-on-primary);
-    border-color: var(--md-primary);
-}
-
 .md-text-btn:disabled,
 .md-tonal-btn:disabled,
 .send-fab:disabled {

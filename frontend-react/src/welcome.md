@@ -1,7 +1,7 @@
 # Hello!
 
-I'm here to guide you through a process called the Question Formulation Technique - a reflective exercise to help you develop better research questions.
+I'm your Question Coach, and I'm here to guide you through a structured process for
+learning how to ask better questions.
 
-You can click the "Next stage" button (bottom right) to go to the next stage.
-
-The numbers in the top navigation bar show you what stage you're on.
+You can work through each stage in order using the **Next stage** button at the bottom
+right. The numbered icons at the top show your progress.
