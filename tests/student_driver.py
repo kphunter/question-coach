@@ -24,10 +24,12 @@ Requirements:
 
 import argparse
 import dataclasses
+import datetime
 import json
 import os
 import sys
 import textwrap
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -561,9 +563,8 @@ def run_stage_6(persona: dict, student: StudentAgent, coach: QCClient,
 def _build_session_payload(persona_key: str, state: WorkspaceState,
                            history: list[dict], completed: bool) -> dict:
     """Build a session dict compatible with the /api/sessions endpoint."""
-    import datetime
     from collections import defaultdict
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now(datetime.UTC).isoformat()
 
     # Group history messages by stage_id to produce per-stage chat arrays.
     stage_chats: dict[str, list] = defaultdict(list)
@@ -578,7 +579,7 @@ def _build_session_payload(persona_key: str, state: WorkspaceState,
 
     return {
         "schema_version": "1",
-        "session_id": uid(),
+        "session_id": uuid.uuid4().hex[:8],
         "started_at": now,
         "completed_at": now if completed else None,
         "completed": completed,
