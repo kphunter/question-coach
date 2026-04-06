@@ -68,7 +68,7 @@ Now, draw a **Divergent Thinking Card**. Divergent Thinking Cards are designed t
 
 ### Message 1
 
-If you have any questions about the card, let me know.
+What card did you draw?
 
 ### Message 2
 
@@ -124,7 +124,7 @@ Draw a **Reflective Thinking Card**.
 
 ### Message 2
 
-[slow] If you have any questions about the prompt on your card, let me know.
+What card did you draw?
 
 ### Message 3
 

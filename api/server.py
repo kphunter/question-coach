@@ -15,10 +15,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter  # noqa: F40
 
 import os
 import sys
+import base64
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import json
+
+import httpx
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -629,6 +632,75 @@ async def chat(request: ChatRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Chat failed: {str(e)}",
         )
+
+
+SESSIONS_REPO = "kphunter/qc-analysis-prompt-improvement-bot"
+GITHUB_API = "https://api.github.com"
+
+
+class SessionSubmitRequest(BaseModel):
+    session: Dict[str, Any]
+
+
+@app.post("/api/sessions", status_code=202)
+async def submit_session(request: SessionSubmitRequest):
+    """Commit a session JSON to the private analysis repo and trigger a repository_dispatch."""
+    token = os.getenv("SESSIONS_REPO_TOKEN")
+    if not token:
+        logger.warning("SESSIONS_REPO_TOKEN not set — session not stored")
+        return {"status": "skipped", "reason": "no token"}
+
+    session = request.session
+    session_id = session.get("session_id", "unknown")
+    started_at = session.get("started_at", datetime.utcnow().isoformat())
+    # Use the first 7 chars of ISO date for the folder (YYYY-MM)
+    try:
+        month = started_at[:7]
+    except Exception:
+        month = datetime.utcnow().strftime("%Y-%m")
+
+    path = f"sessions/{month}/session-{session_id}.json"
+    content_bytes = json.dumps(session, ensure_ascii=False, indent=2).encode("utf-8")
+    content_b64 = base64.b64encode(content_bytes).decode("ascii")
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Commit the file
+        put_url = f"{GITHUB_API}/repos/{SESSIONS_REPO}/contents/{path}"
+        put_body = {
+            "message": f"session {session_id}",
+            "content": content_b64,
+        }
+        put_resp = await client.put(put_url, json=put_body, headers=headers)
+
+        if put_resp.status_code == 422:
+            # File already exists — skip dispatch to avoid duplicate analysis PRs
+            logger.info(f"Session {session_id} already stored, skipping dispatch")
+            return {"status": "duplicate"}
+
+        if put_resp.status_code not in (200, 201):
+            logger.error(f"GitHub file commit failed: {put_resp.status_code} {put_resp.text}")
+            return {"status": "error", "reason": "commit failed"}
+
+        # Trigger the analysis workflow
+        dispatch_url = f"{GITHUB_API}/repos/{SESSIONS_REPO}/dispatches"
+        dispatch_body = {
+            "event_type": "session-submitted",
+            "client_payload": {"session_path": path, "session_id": session_id},
+        }
+        dispatch_resp = await client.post(dispatch_url, json=dispatch_body, headers=headers)
+
+        if dispatch_resp.status_code != 204:
+            logger.error(f"repository_dispatch failed: {dispatch_resp.status_code} {dispatch_resp.text}")
+            return {"status": "stored", "dispatch": "failed"}
+
+    logger.info(f"Session {session_id} stored and dispatch triggered")
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":

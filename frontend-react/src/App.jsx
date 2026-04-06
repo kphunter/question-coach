@@ -78,99 +78,200 @@ const welcomeLines = rawWelcome.split("\n").filter((l) => l.trim());
 const welcomeTitle = welcomeLines[0].replace(/^#+\s*/, "");
 const welcomeBody = welcomeLines.slice(1).join(" ").trim();
 
-const MEMORY_KEY = "qc-memory";
+// ── Session management ─────────────────────────────────────────────────────
+const SESSION_KEY = "qc-session";
 
-/** @returns {import('./stages').SharedMemory} */
+/** Navigation-only coach messages are flagged ui_hint:true for the analysis agent. */
+const NAV_HINT_RE = /click.*(?:next\s+stage|the\s+["']?[bB]["']?\s+icon|finish\s+button|the\s+["']?b["'])/i;
+
 function initialMemory() {
   return {
     questions: [{ id: uid(), text: "" }],
     classifications: {},
     priorities: [],
-    starred: [],
     stageNotes: {},
   };
 }
 
-function loadMemory() {
-  try {
-    const raw = localStorage.getItem(MEMORY_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore
-  }
-  return initialMemory();
+function newSession() {
+  const now = new Date().toISOString();
+  return {
+    schema_version: "1",
+    session_id: uid(),
+    started_at: now,
+    completed_at: null,
+    completed: false,
+    model: defaultSettings.gemini_model,
+    question_focus: null,
+    error_events: [],
+    current_stage_id: stages[0].id,
+    memory: initialMemory(),
+    stages: stages.map((s, i) => ({
+      stage_id: s.id,
+      entered_at: i === 0 ? now : null,
+      completed_at: null,
+      data: {},
+      chat: [],
+    })),
+  };
 }
 
-function saveMemory(mem) {
+// Module-level cache so loadSession() is only called once per page load.
+let _initialSession = null;
+
+function getInitialSession() {
+  if (_initialSession) return _initialSession;
+
   try {
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(mem));
-  } catch {
-    // ignore
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Ensure every current stage has an entry (handles stages added after session was created).
+      const knownIds = new Set(parsed.stages?.map((s) => s.stage_id) ?? []);
+      const missing = stages
+        .filter((s) => !knownIds.has(s.id))
+        .map((s) => ({ stage_id: s.id, entered_at: null, completed_at: null, data: {}, chat: [] }));
+      _initialSession = { ...newSession(), ...parsed, stages: [...(parsed.stages ?? []), ...missing] };
+      return _initialSession;
+    }
+  } catch { /* ignore */ }
+
+  // ── Migrate from old per-key localStorage format ──────────────────────────
+  const sess = newSession();
+  let migrated = false;
+  try {
+    const raw = localStorage.getItem("qc-memory");
+    if (raw) { sess.memory = JSON.parse(raw); migrated = true; }
+  } catch { /* ignore */ }
+  stages.forEach((s, i) => {
+    try {
+      const raw = localStorage.getItem(`qc-chat-${s.id}`);
+      if (raw) {
+        const chat = JSON.parse(raw);
+        if (Array.isArray(chat)) { sess.stages[i].chat = chat; migrated = true; }
+      }
+    } catch { /* ignore */ }
+  });
+  if (migrated) {
+    stages.forEach((s) => localStorage.removeItem(`qc-chat-${s.id}`));
+    localStorage.removeItem("qc-memory");
+  }
+
+  _initialSession = sess;
+  return _initialSession;
+}
+
+function saveSession(data) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
+/** Extract question focus from Stage 1 messages — no localStorage regex needed. */
+function extractQuestionFocus(msgs) {
+  const focus = [...msgs]
+    .reverse()
+    .find((m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text));
+  if (!focus) return null;
+  let text = focus.text.split(/does this feel/i)[0].trim().replace(/[.,!?]+$/, "").trim();
+  text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  return text || focus.text;
+}
+
+/** Snapshot structured outputs when leaving a stage, for the analysis agent. */
+function captureStageData(stageId, memory, msgs) {
+  const filled = memory.questions.filter((q) => q.text.trim());
+  const firstUserText = msgs.find((m) => m.role === "user")?.text ?? null;
+  switch (stageId) {
+    case "produce-questions-a":
+      return { questions: filled.map((q) => q.text) };
+    case "produce-questions-b":
+      return { questions: filled.map((q) => q.text), card_reported: firstUserText };
+    case "improve-questions": {
+      const open = filled.filter((q) => memory.classifications[q.id] === "open").map((q) => q.text);
+      const closed = filled.filter((q) => memory.classifications[q.id] === "closed").map((q) => q.text);
+      return { classifications: { open, closed } };
+    }
+    case "prioritize-questions-a":
+      return { card_reported: firstUserText };
+    case "prioritize-questions-b": {
+      const top = memory.priorities
+        .slice(0, 3)
+        .map((id) => filled.find((q) => q.id === id))
+        .filter(Boolean)
+        .map((q) => q.text);
+      return { top_questions: top };
+    }
+    default:
+      return {};
   }
 }
 
-function hasStoredChat(stageId) {
+/**
+ * Fire-and-forget: submit the current session JSON to the analysis backend.
+ * Reads directly from localStorage so it's always current (safe for beforeunload).
+ */
+function submitSession(completed) {
+  const api = buildApiBase();
   try {
-    const raw = localStorage.getItem(`qc-chat-${stageId}`);
-    if (!raw) return false;
-    const msgs = JSON.parse(raw);
-    // Only consider a stage "stored" if it has more than just the initial
-    // instruction message — otherwise the intro sequence hasn't played yet.
-    return Array.isArray(msgs) && msgs.length > 1;
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const session = JSON.parse(raw);
+    const now = new Date().toISOString();
+    const payload = JSON.stringify({
+      session: {
+        ...session,
+        completed,
+        completed_at: completed ? now : null,
+      },
+    });
+    const url = `${api}/api/sessions`;
+    // sendBeacon is reliable during page unload; fall back to keepalive fetch otherwise
+    const blob = new Blob([payload], { type: "application/json" });
+    if (!navigator.sendBeacon(url, blob)) {
+      fetch(url, {
+        method: "POST",
+        body: payload,
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+      }).catch(() => {});
+    }
   } catch {
-    return false;
-  }
-}
-
-function loadStageChat(stageId, defaultMessages) {
-  try {
-    const raw = localStorage.getItem(`qc-chat-${stageId}`);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore parse errors
-  }
-  return defaultMessages;
-}
-
-/** Returns the last coach message from Stage 1, used to pass the question focus forward. */
-function getStage1Focus() {
-  try {
-    const raw = localStorage.getItem('qc-chat-question-focus');
-    if (!raw) return null;
-    const msgs = JSON.parse(raw);
-    // API responses have role "assistant" but no isCoach flag.
-    // Skip intro bubbles (isCoach: true) and the final "click Next stage"
-    // instruction, to land on the transition message containing the focus.
-    const focus = [...msgs].reverse().find(
-      (m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text)
-    );
-    if (!focus) return null;
-    // Keep only the focus sentence; drop the "Does this feel…" confirmation.
-    let text = focus.text.split(/does this feel/i)[0].trim().replace(/[.,!?]+$/, "").trim();
-    // Strip common preamble prefixes the model adds before the statement.
-    text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
-    // Capitalise first letter.
-    text = text.charAt(0).toUpperCase() + text.slice(1);
-    return text || focus.text;
-  } catch {
-    return null;
-  }
-}
-
-function saveStageChat(stageId, msgs) {
-  try {
-    localStorage.setItem(`qc-chat-${stageId}`, JSON.stringify(msgs));
-  } catch {
-    // ignore storage errors
+    // non-fatal
   }
 }
 
 export default function App() {
   const API = useMemo(buildApiBase, []);
 
+  // ── Session metadata state ─────────────────────────────────────────────────
+  const [sessionId, setSessionId] = useState(() => getInitialSession().session_id);
+  const [startedAt, setStartedAt] = useState(() => getInitialSession().started_at);
+  const [errorEvents, setErrorEvents] = useState(() => getInitialSession().error_events ?? []);
+  const [questionFocus, setQuestionFocus] = useState(() => getInitialSession().question_focus ?? null);
+
+  // Per-stage chat arrays for all non-current stages.
+  const [savedChats, setSavedChats] = useState(() =>
+    Object.fromEntries(getInitialSession().stages.map((s) => [s.stage_id, s.chat ?? []]))
+  );
+
+  // Per-stage timestamps and structured data snapshots.
+  const [stageState, setStageState] = useState(() =>
+    Object.fromEntries(
+      getInitialSession().stages.map((s) => [
+        s.stage_id,
+        { entered_at: s.entered_at, completed_at: s.completed_at, data: s.data ?? {} },
+      ])
+    )
+  );
+
   // ── Core pipeline state ────────────────────────────────────────────────────
-  const [memory, setMemory] = useState(loadMemory);
-  const [stageIndex, setStageIndex] = useState(0);
+  const [memory, setMemory] = useState(() => getInitialSession().memory ?? initialMemory());
+  const [stageIndex, setStageIndex] = useState(() => {
+    const idx = stages.findIndex((s) => s.id === getInitialSession().current_stage_id);
+    return Math.max(0, idx);
+  });
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [isConnected, setIsConnected] = useState(false);
@@ -180,20 +281,24 @@ export default function App() {
   const [statusText, setStatusText] = useState("Connecting…");
   const [snackbar, setSnackbar] = useState("");
   const [messages, setMessages] = useState(() => {
-    const s0 = stages[0];
+    const sess = getInitialSession();
+    const currentIdx = Math.max(0, stages.findIndex((s) => s.id === sess.current_stage_id));
+    const currentStage = stages[currentIdx];
+    const savedChat = sess.stages.find((s) => s.stage_id === currentStage.id)?.chat;
     const defaultMsg = {
       id: uid(),
       role: "assistant",
-      text: s0.instruction,
-      stageIndex: 0,
+      text: currentStage.instruction,
+      stageIndex: currentIdx,
       isCoach: true,
       isInstruction: true,
       createdAt: new Date().toISOString(),
     };
-    return loadStageChat(s0.id, [defaultMsg]);
+    return savedChat?.length > 1 ? savedChat : [defaultMsg];
   });
   const [settings] = useState(defaultSettings);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showCardPicker, setShowCardPicker] = useState(false);
   const [highlightNextBtn, setHighlightNextBtn] = useState(false);
   const [highlightPips, setHighlightPips] = useState(false);
 
@@ -203,15 +308,27 @@ export default function App() {
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
   const introTimers = useRef([]);
-  // Track whether stage 0 was a fresh (first-visit) load before messages were saved
-  const initialWasFresh = useRef(!hasStoredChat(stages[0].id));
+  // Set to true in goToStage so the next scroll effect scrolls to top, not bottom.
+  const scrollToTopOnNextRender = useRef(false);
+  // Holds { parts, stageIdx } for card stages — fires when the modal is closed.
+  const pendingCardIntro = useRef(null);
+
+  // True only when the very first page load lands on Stage 0 with no prior chat.
+  const initialWasFresh = useRef(
+    (() => {
+      const sess = getInitialSession();
+      const isStage0 = sess.current_stage_id === stages[0].id;
+      const s0Chat = sess.stages.find((s) => s.stage_id === stages[0].id)?.chat;
+      return isStage0 && (!s0Chat || s0Chat.length <= 1);
+    })()
+  );
 
   function clearIntroTimers() {
     introTimers.current.forEach(clearTimeout);
     introTimers.current = [];
   }
 
-  /** Flash the Next Stage button twice when Stage 1's Message 2 appears. */
+  /** Flash the Next Stage button and pips when Stage 1's messages 2 and 3 appear. */
   function scheduleStage0Highlight(parts) {
     if (parts.length < 2) return;
     let elapsed = 0;
@@ -219,8 +336,7 @@ export default function App() {
       elapsed += raw.startsWith("[slow]") ? SECONDARY_DELAY_MS : INTRO_DELAY_MS;
       return elapsed;
     });
-    const showAt = timings[1]; // when Message 2 appears
-    // Flash Next Stage button three times at 0.5s intervals starting at Message 2
+    const showAt = timings[1];
     [
       [showAt,          true],
       [showAt +  500,   false],
@@ -232,7 +348,6 @@ export default function App() {
       introTimers.current.push(setTimeout(() => setHighlightNextBtn(value), delay));
     });
 
-    // Flash all stage pips three times at 0.5s intervals starting at Message 3
     const pipsAt = timings[2];
     if (pipsAt != null) {
       [
@@ -264,6 +379,7 @@ export default function App() {
             text,
             stageIndex: stageIdx,
             isCoach: true,
+            ui_hint: NAV_HINT_RE.test(text),
             createdAt: new Date().toISOString(),
           },
         ]);
@@ -272,10 +388,16 @@ export default function App() {
     });
   }
 
-  // ── Scroll to bottom when messages change ─────────────────────────────────
+  // ── Scroll on message change — top on stage switch, bottom otherwise ────────
   useEffect(() => {
     const el = messagesRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (scrollToTopOnNextRender.current) {
+      el.scrollTop = 0;
+      scrollToTopOnNextRender.current = false;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages, isProcessing]);
 
   // ── Schedule delayed intro parts for stage 0 on first visit ──────────────
@@ -287,19 +409,33 @@ export default function App() {
     return () => clearIntroTimers();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Persist current stage chat to localStorage ────────────────────────────
+  // ── Persist entire session to a single localStorage key ───────────────────
   useEffect(() => {
-    saveStageChat(stage.id, messages);
-  }, [messages, stage.id]);
+    const session = {
+      schema_version: "1",
+      session_id: sessionId,
+      started_at: startedAt,
+      completed_at: null,
+      completed: false,
+      model: defaultSettings.gemini_model,
+      question_focus: questionFocus,
+      error_events: errorEvents,
+      current_stage_id: stage.id,
+      memory,
+      stages: stages.map((s) => ({
+        stage_id: s.id,
+        ...(stageState[s.id] ?? { entered_at: null, completed_at: null, data: {} }),
+        chat: s.id === stage.id ? messages : (savedChats[s.id] ?? []),
+      })),
+    };
+    saveSession(session);
+  }, [messages, memory, savedChats, questionFocus, errorEvents, stage.id, sessionId, startedAt, stageState]);
 
-  // ── Persist workspace memory (questions, classifications, etc.) ────────────
-  useEffect(() => {
-    saveMemory(memory);
-  }, [memory]);
-
-  // ── Reset draft when changing stages ──────────────────────────────────────
+  // ── Reset draft + close card picker when changing stages ──────────────────
   useEffect(() => {
     setDraftText("");
+    setShowCardPicker(false);
+    pendingCardIntro.current = null;
   }, [stageIndex]);
 
   // ── Fetch stage prompts + poll health ─────────────────────────────────────
@@ -363,6 +499,13 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [snackbar]);
 
+  // ── Submit session on page unload (incomplete) ────────────────────────────
+  useEffect(() => {
+    function onUnload() { submitSession(false); }
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, []);
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   function pushMessage(message) {
     setMessages((prev) => [
@@ -376,25 +519,66 @@ export default function App() {
       return;
 
     clearIntroTimers();
-    saveStageChat(stage.id, messages);
+    scrollToTopOnNextRender.current = true;
 
-    const next = stages[nextIndex];
-    const isFresh = !hasStoredChat(next.id);
+    const now = new Date().toISOString();
+    const nextStage = stages[nextIndex];
+    const nextChat = savedChats[nextStage.id];
+    const isFresh = !nextChat || nextChat.length <= 1;
+
+    // Commit current stage chat to savedChats
+    setSavedChats((prev) => ({ ...prev, [stage.id]: messages }));
+
+    // Mark current stage completed; mark next stage entered; snapshot data
+    setStageState((prev) => ({
+      ...prev,
+      [stage.id]: {
+        ...prev[stage.id],
+        completed_at: prev[stage.id]?.completed_at ?? now,
+        data: { ...prev[stage.id]?.data, ...captureStageData(stage.id, memory, messages) },
+      },
+      [nextStage.id]: {
+        ...prev[nextStage.id],
+        entered_at: prev[nextStage.id]?.entered_at ?? now,
+      },
+    }));
+
+    // Extract and store question focus when leaving Stage 1
+    if (stage.id === "question-focus") {
+      const focus = extractQuestionFocus(messages);
+      if (focus) setQuestionFocus(focus);
+    }
+
     const defaultMsg = {
       id: uid(),
       role: "assistant",
-      text: next.instruction,
+      text: nextStage.instruction,
       stageIndex: nextIndex,
       isCoach: true,
       isInstruction: true,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     };
 
     setStageIndex(nextIndex);
-    setMessages(loadStageChat(next.id, [defaultMsg]));
+    setMessages(isFresh ? [defaultMsg] : nextChat);
 
-    if (isFresh && next.messageParts?.length > 0) {
-      scheduleIntroParts(next.messageParts, nextIndex, INTRO_DELAY_MS);
+    if (isFresh && nextStage.messageParts?.length > 0) {
+      if (nextStage.cardPickerUrl) {
+        // Hold back — schedule when the card picker modal is closed
+        pendingCardIntro.current = { parts: nextStage.messageParts, stageIdx: nextIndex };
+      } else {
+        scheduleIntroParts(nextStage.messageParts, nextIndex, INTRO_DELAY_MS);
+      }
+    }
+  }
+
+  /** Close the card picker and fire any pending intro message sequence. */
+  function handleCardPickerClose() {
+    setShowCardPicker(false);
+    if (pendingCardIntro.current) {
+      const { parts, stageIdx } = pendingCardIntro.current;
+      pendingCardIntro.current = null;
+      scheduleIntroParts(parts, stageIdx, INTRO_DELAY_MS);
     }
   }
 
@@ -417,20 +601,21 @@ export default function App() {
     setIsProcessing(true);
     try {
       let systemPrompt = stagePrompts[stage.promptId] ?? null;
-      if (stage.id !== 'question-focus') {
-        const focus = getStage1Focus();
-        if (focus) {
-          const prefix = `CONTEXT — Student's question focus from Stage 1:\n${focus}\n\n---\n\n`;
-          systemPrompt = systemPrompt ? prefix + systemPrompt : prefix.trim();
-        }
+
+      // Inject question focus from session state (no localStorage regex needed)
+      if (stage.id !== "question-focus" && questionFocus) {
+        const prefix = `CONTEXT — Student's question focus from Stage 1:\n${questionFocus}\n\n---\n\n`;
+        systemPrompt = systemPrompt ? prefix + systemPrompt : prefix.trim();
       }
-      if (stage.id === 'next-steps') {
+
+      if (stage.id === "next-steps") {
+        const filled = memory.questions.filter((q) => q.text.trim());
         const top3 = memory.priorities
           .slice(0, 3)
-          .map((id) => memory.questions.find((q) => q.id === id))
+          .map((id) => filled.find((q) => q.id === id))
           .filter((q) => q?.text?.trim())
           .map((q, i) => `${i + 1}. ${q.text.trim()}`)
-          .join('\n');
+          .join("\n");
         if (top3) {
           const prefix = `CONTEXT — Student's top 3 questions from Stage 4:\n${top3}\n\n---\n\n`;
           systemPrompt = systemPrompt ? prefix + systemPrompt : prefix.trim();
@@ -499,6 +684,10 @@ export default function App() {
         introTimers.current.push(id);
       });
     } catch (error) {
+      setErrorEvents((prev) => [
+        ...prev,
+        { stage_id: stage.id, type: "api_error", message: error.message, at: new Date().toISOString() },
+      ]);
       pushMessage({
         role: "assistant",
         text: `Sorry, I ran into an error: ${error.message}`,
@@ -521,12 +710,19 @@ export default function App() {
     sendToBackend(text);
   }
 
-  /** Clear all stage chats from localStorage and restart from stage 1. */
+  /** Clear session and restart from stage 1. */
   function handleReset() {
     if (!window.confirm("Clear all chat history and start over?")) return;
     clearIntroTimers();
-    stages.forEach((s) => localStorage.removeItem(`qc-chat-${s.id}`));
-    localStorage.removeItem(MEMORY_KEY);
+
+    // Submit the current session before clearing
+    submitSession(false);
+
+    // Invalidate the module-level session cache
+    _initialSession = null;
+    const freshSession = newSession();
+    saveSession(freshSession);
+
     const s0 = stages[0];
     const defaultMsg = {
       id: uid(),
@@ -537,11 +733,26 @@ export default function App() {
       isInstruction: true,
       createdAt: new Date().toISOString(),
     };
+
+    setSessionId(freshSession.session_id);
+    setStartedAt(freshSession.started_at);
+    setErrorEvents([]);
+    setQuestionFocus(null);
+    setSavedChats(Object.fromEntries(stages.map((s) => [s.id, []])));
+    setStageState(
+      Object.fromEntries(
+        freshSession.stages.map((s) => [
+          s.stage_id,
+          { entered_at: s.entered_at, completed_at: null, data: {} },
+        ])
+      )
+    );
     setStageIndex(0);
-    setMessages([defaultMsg]);
     setMemory(initialMemory());
+    setMessages([defaultMsg]);
     setHighlightNextBtn(false);
     setHighlightPips(false);
+
     if (s0.messageParts?.length > 0) {
       scheduleIntroParts(s0.messageParts, 0, INTRO_DELAY_MS);
       scheduleStage0Highlight(s0.messageParts);
@@ -559,10 +770,12 @@ export default function App() {
   }
 
   function generateSessionMarkdown() {
+    // Merge all stage chats: saved chats + current stage messages
+    const allChats = { ...savedChats, [stage.id]: messages };
     const lines = ["# Question Coach — Session Summary", ""];
     const filled = memory.questions.filter((q) => q.text.trim());
 
-    stages.forEach((s, idx) => {
+    stages.forEach((s) => {
       lines.push(`## ${s.heading}`, "");
 
       // Workspace output per stage
@@ -572,24 +785,16 @@ export default function App() {
         lines.push("");
       }
       if (s.id === "improve-questions" && filled.length) {
-        const open = filled.filter(
-          (q) => memory.classifications[q.id] === "open",
-        );
-        const closed = filled.filter(
-          (q) => memory.classifications[q.id] === "closed",
-        );
+        const open = filled.filter((q) => memory.classifications[q.id] === "open");
+        const closed = filled.filter((q) => memory.classifications[q.id] === "closed");
         const unsorted = filled.filter((q) => !memory.classifications[q.id]);
         lines.push("### Classifications", "");
         lines.push("**Open questions:**");
-        (open.length ? open : []).forEach((q, i) =>
-          lines.push(`${i + 1}. ${q.text}`),
-        );
+        (open.length ? open : []).forEach((q, i) => lines.push(`${i + 1}. ${q.text}`));
         if (!open.length) lines.push("*(none)*");
         lines.push("");
         lines.push("**Closed questions:**");
-        (closed.length ? closed : []).forEach((q, i) =>
-          lines.push(`${i + 1}. ${q.text}`),
-        );
+        (closed.length ? closed : []).forEach((q, i) => lines.push(`${i + 1}. ${q.text}`));
         if (!closed.length) lines.push("*(none)*");
         lines.push("");
         if (unsorted.length) {
@@ -608,14 +813,7 @@ export default function App() {
         lines.push("");
       }
 
-      // Chat history for this stage
-      let chat;
-      try {
-        const raw = localStorage.getItem(`qc-chat-${s.id}`);
-        chat = raw ? JSON.parse(raw) : idx === stageIndex ? messages : [];
-      } catch {
-        chat = idx === stageIndex ? messages : [];
-      }
+      const chat = allChats[s.id] ?? [];
       if (chat.length) {
         lines.push("### Chat", "");
         chat.forEach((msg) => {
@@ -665,7 +863,7 @@ export default function App() {
         <div className="app-bar-trailing">
           <a
             className="md-text-btn app-bar-kb-link"
-            href="/cards.md"
+            href={`${import.meta.env.BASE_URL}qc-cards-complete-print-set.pdf`}
             target="_blank"
             rel="noreferrer noopener"
           >
@@ -744,11 +942,11 @@ export default function App() {
             )}
 
             {stageIndex > 0 && (() => {
-              const isLateStage = stage.id === 'next-steps';
-              if (isLateStage) {
+              if (stage.id === "next-steps") {
+                const filled = memory.questions.filter((q) => q.text.trim());
                 const top3 = memory.priorities
                   .slice(0, 3)
-                  .map((id) => memory.questions.find((q) => q.id === id))
+                  .map((id) => filled.find((q) => q.id === id))
                   .filter((q) => q?.text?.trim());
                 if (!top3.length) return null;
                 return (
@@ -762,12 +960,11 @@ export default function App() {
                   </div>
                 );
               }
-              if (stage.id === 'reflect') return null;
-              const focus = getStage1Focus();
-              return focus ? (
+              if (stage.id === "reflect") return null;
+              return questionFocus ? (
                 <div className="focus-bubble">
                   <span className="focus-bubble-label">Question focus</span>
-                  <span className="focus-bubble-text">{focus}</span>
+                  <span className="focus-bubble-text">{questionFocus}</span>
                 </div>
               ) : null;
             })()}
@@ -775,6 +972,7 @@ export default function App() {
             {messages.map((message) => {
               const msgStage = stages[message.stageIndex];
               const isInstruction = message.isInstruction && msgStage?.image;
+              const hasCardPicker = message.isInstruction && msgStage?.cardPickerUrl;
               return (
               <div
                 className={`msg-row ${message.role}`}
@@ -793,6 +991,16 @@ export default function App() {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {message.text}
                     </ReactMarkdown>
+                    {hasCardPicker && (
+                      <button
+                        className="draw-card-btn"
+                        type="button"
+                        onClick={() => setShowCardPicker(true)}
+                      >
+                        <span className="material-symbols-rounded mini-icon">style</span>
+                        Draw a card
+                      </button>
+                    )}
                   </div>
                   {message.sources?.length > 0 && (
                     <SourcesToggle sources={message.sources} />
@@ -920,7 +1128,7 @@ export default function App() {
               {stageIndex === stages.length - 1 ? (
                 <button
                   className="md-tonal-btn"
-                  onClick={() => setShowFinishModal(true)}
+                  onClick={() => { submitSession(true); setShowFinishModal(true); }}
                   type="button"
                 >
                   Finish
@@ -944,6 +1152,36 @@ export default function App() {
           </div>
         </aside>
       </main>
+
+      {showCardPicker && stage.cardPickerUrl && (
+        <div
+          className="modal-overlay card-picker-overlay"
+          onClick={handleCardPickerClose}
+        >
+          <div
+            className="card-picker-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-picker-header">
+              <span className="material-symbols-rounded modal-icon">style</span>
+              <span className="modal-title">Card Picker</span>
+              <button
+                className="icon-btn card-picker-close"
+                type="button"
+                aria-label="Close card picker"
+                onClick={handleCardPickerClose}
+              >
+                <span className="material-symbols-rounded">close</span>
+              </button>
+            </div>
+            <iframe
+              className="card-picker-iframe"
+              src={stage.cardPickerUrl}
+              title="Card Picker"
+            />
+          </div>
+        </div>
+      )}
 
       {showFinishModal && (
         <div
@@ -989,7 +1227,6 @@ export default function App() {
               <button
                 className="md-text-btn"
                 onClick={() => setShowFinishModal(false)}
-                type="button"
               >
                 Close
               </button>

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-import { DndContext, DragOverlay, PointerSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -168,7 +168,7 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
 
       <div className="dnd-scroll-body">
         <DndContext
-          collisionDetection={closestCenter}
+          collisionDetection={pointerWithin}
           onDragStart={(event) => setActiveId(String(event.active.id))}
           onDragEnd={handleDragEnd}
           sensors={sensors}

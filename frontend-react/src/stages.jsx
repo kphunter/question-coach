@@ -126,6 +126,7 @@ const stageLogic = {
     promptId: 7,
     image: divergentThinkingCard,
     imageAlt: "Divergent Thinking Card",
+    cardPickerUrl: "https://johnrose-ubc.github.io/question-coach-cards/Question%20Coach%20Card%20Picker%20v2.html",
     ...produceQuestionsLogic,
   },
 
@@ -165,6 +166,7 @@ const stageLogic = {
     promptId: 8,
     image: reflectiveThinkingCard,
     imageAlt: "Reflective Thinking Card",
+    cardPickerUrl: "https://johnrose-ubc.github.io/question-coach-cards/Question%20Coach%20Card%20Picker%20v2.html",
     inputType: 'question-list-readonly',
     input: (memory) => ({ questions: memory.questions.filter((q) => q.text.trim()) }),
     output: (result, memory) => ({
