@@ -1093,6 +1093,29 @@ export default function App() {
                   })}
                 />
               )}
+
+              {stage.id === "question-focus" && (
+                <ol className="panel-roadmap">
+                  {PIP_GROUPS.map((group) => {
+                    const name = stages
+                      .find((s) => s.id === group.ids[0])
+                      ?.heading.replace(/^Stage\s+\S+\s*·\s*/, "") ?? group.label;
+                    const isActive = group.ids.includes(stage.id);
+                    return (
+                      <li key={group.label} className={`roadmap-item${isActive ? " roadmap-active" : ""}`}>
+                        {name}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+
+              {stage.id === "reflect" && questionFocus && (
+                <div className="panel-focus-reminder">
+                  <span className="panel-focus-label">Question focus</span>
+                  <span className="panel-focus-text">{questionFocus}</span>
+                </div>
+              )}
             </div>
             <div className="panel-nav">
               <button
