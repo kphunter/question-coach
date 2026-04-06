@@ -7,7 +7,9 @@ placeholder: Share your question focus or describe your assignment topic...
 
 ### Instruction
 
-This stage is about identifying or developing a question focus (QFocus). Do you have a question focus, or do you need to develop one?
+This stage is about identifying or developing a question focus (QFocus).
+
+Do you have a question focus, or do you need to develop one?
 
 ### Message 1
 
@@ -24,7 +26,7 @@ placeholder: Ask or chat about the task...
 
 ### Instruction
 
-Now that you've got a question focus, the next stage is generate as many questions as you can.
+Now that you've got a question focus, this stage is about generating as many questions as you can.
 
 Here are the rules for this stage:
 
@@ -79,11 +81,11 @@ Well done. Now, let's spend a few moments classifying your questions as either *
 
 **Open questions** require explanation, discussion, or interpretation to answer:
 
-- For example, *"How did the passage of this law change everyday life for low-income families?"*
+- *"How did the passage of this law change everyday life for low-income families?"*
 
 **Closed questions** can be answered with a single word, a yes/no, or a simple fact:
 
-- For example, *"When was this law passed?"*
+- *"When was this law passed?"*
 
 ### Message 1
 
@@ -108,7 +110,7 @@ Draw a **Reflective Thinking Card**.
 
 ### Message 1
 
-[slow] Reflective Thinking Cards are designed to help you reflect on your questions and what they mean to you before you think about how to prioritize them.
+[slow] These cards are designed to help you reflect on your questions and what they mean to you before you think about how to prioritize them.
 
 ### Message 2
 

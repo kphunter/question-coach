@@ -28,7 +28,10 @@ import json
 import os
 import sys
 import textwrap
+from pathlib import Path
 from typing import Optional
+
+import yaml
 
 import anthropic
 import httpx
@@ -38,6 +41,8 @@ import httpx
 DEFAULT_API = os.environ.get("QC_API_URL", "http://localhost:8000")
 STUDENT_MODEL = "claude-sonnet-4-6"
 COACH_GEMINI_MODEL = "gemini-2.5-flash-lite"
+
+MAX_CHAT_MSG = 1950  # stay under the API's max_input_length (2000)
 
 DIVERGENT_CARDS = [
     "What if the opposite were true?",
@@ -93,85 +98,62 @@ def serialize_priorities(state: WorkspaceState) -> str:
     return "\n".join(lines)
 
 
-# ── Student personas ────────────────────────────────────────────────────────────
+# ── Student personas (loaded from personas.yaml) ────────────────────────────────
 
-PERSONAS = {
-    "keen": {
-        "name": "Alex",
-        "display": "Alex (Keen)",
-        "topic": "the ethics of artificial intelligence in medical diagnosis",
-        "questions_2a": 9,
-        "questions_2b": 4,
-        "system": textwrap.dedent("""\
-            You are Alex, an enthusiastic undergraduate student who genuinely enjoys learning.
-            You read every instruction carefully before responding, engage thoughtfully with
-            the material, and make personal connections to what you already know. You are
-            working on an assignment about the ethics of artificial intelligence in
-            medical diagnosis.
+_PERSONAS_FILE = Path(__file__).parent / "personas.yaml"
 
-            Behavioural guidelines:
-            - Always acknowledge the coach's message before giving your own response.
-            - Write in complete, thoughtful sentences.
-            - Show intellectual engagement ("I hadn't thought about it that way").
-            - Classify questions carefully, considering what kind of answer they invite.
-            - Choose top questions based on which you find most intellectually interesting.
-            - Reflect genuinely on what changed in your thinking.
-            - Keep each conversational response to 2–4 sentences unless generating questions.
+def _load_personas() -> dict:
+    with open(_PERSONAS_FILE) as f:
+        return yaml.safe_load(f)
 
-            When asked to generate questions, produce genuine, curious questions — not
-            shallow or obvious ones. Follow the QFT rule: questions only, no statements.
-        """),
-    },
-    "skeptical": {
-        "name": "Jordan",
-        "display": "Jordan (Skeptical)",
-        "topic": "social media and teenage mental health",
-        "questions_2a": 5,
-        "questions_2b": 2,
-        "system": textwrap.dedent("""\
-            You are Jordan, a social student who is mildly skeptical about structured academic
-            exercises. You complete tasks but with less effort than ideal — you sometimes get
-            distracted, question whether something is really necessary, or take shortcuts.
-            You are working on an assignment about social media and teenage mental health.
+PERSONAS = _load_personas()
 
-            Behavioural guidelines:
-            - Occasionally question the value of an instruction ("do we really need to do all of these?").
-            - Generate fewer questions than asked; some may be shallow or obvious.
-            - Classify quickly without overthinking; you may occasionally misclassify something.
-            - Choose top questions based on whichever seem easiest to research.
-            - Give brief, surface-level reflections.
-            - Use casual language and contractions.
-            - Keep each response to 1–3 sentences.
+VERBOSITY_INSTRUCTIONS = {
+    1: "VERBOSITY: Respond in as few words as possible — single words or fragments are fine.",
+    2: "VERBOSITY: 1 terse sentence per response. Be brief.",
+    3: "VERBOSITY: 1-2 sentences per response. Be concise but complete.",
+    4: "VERBOSITY: 2-3 sentences per response. Elaborate where it adds value.",
+    5: "VERBOSITY: 3-4 sentences per response. Be thorough and detailed.",
+}
 
-            When asked to generate questions, produce a small number of straightforward
-            questions — some closed, some open, but nothing too deep.
-        """),
-    },
-    "action": {
-        "name": "Sam",
-        "display": "Sam (Action-oriented)",
-        "topic": "reducing food waste in university dining halls",
-        "questions_2a": 7,
-        "questions_2b": 3,
-        "system": textwrap.dedent("""\
-            You are Sam, a mature part-time student with work experience and limited time.
-            You are practical, efficient, and goal-oriented. You avoid abstract philosophising
-            and focus on what is actionable and measurable. You are working on an assignment
-            about reducing food waste in university dining halls.
+CONFIDENCE_INSTRUCTIONS = {
+    1: "CONFIDENCE: You are hesitant and unsure. Hedge every statement, seek reassurance, and defer to the coach on all decisions.",
+    2: "CONFIDENCE: You are mildly uncertain. You express mild doubt and occasionally ask whether you're on the right track.",
+    3: "CONFIDENCE: You are moderately confident. You proceed steadily but welcome guidance.",
+    4: "CONFIDENCE: You are fairly confident. You make decisions independently and only check in when genuinely stuck.",
+    5: "CONFIDENCE: You are highly assertive. You push back on instructions you disagree with and advocate strongly for your own choices.",
+}
 
-            Behavioural guidelines:
-            - Get straight to the point; skip pleasantries.
-            - Generate focused, practical, action-oriented questions.
-            - Classify efficiently and correctly.
-            - Choose top questions based on which lead most directly to a solution.
-            - Reflect briefly and practically ("this helped me focus on what matters").
-            - Occasionally note time pressure ("I need to keep moving on this").
-            - Keep each response to 1–2 sentences unless generating questions.
+COMPLIANCE_INSTRUCTIONS = {
+    1: "COMPLIANCE: You largely ignore detailed instructions. You skim, skip steps, and do the minimum to seem engaged.",
+    2: "COMPLIANCE: You follow the main thrust of instructions but miss details and take shortcuts when you can.",
+    3: "COMPLIANCE: You follow instructions reasonably well, with occasional minor omissions.",
+    4: "COMPLIANCE: You follow instructions carefully and completely, rarely missing a step.",
+    5: "COMPLIANCE: You follow every instruction precisely and thoroughly, even restating them back to confirm understanding.",
+}
 
-            When asked to generate questions, produce focused, practical questions
-            that have clear, researchable answers.
-        """),
-    },
+PRIOR_KNOWLEDGE_INSTRUCTIONS = {
+    1: "PRIOR KNOWLEDGE: You know almost nothing about the topic. Questions are naive, surface-level, and may reveal basic misconceptions.",
+    2: "PRIOR KNOWLEDGE: You have a little background knowledge — enough to ask sensible questions but not to go deep.",
+    3: "PRIOR KNOWLEDGE: You have moderate familiarity with the topic from coursework or general reading.",
+    4: "PRIOR KNOWLEDGE: You are well-read on the topic and bring specific concepts, terminology, and examples into your questions.",
+    5: "PRIOR KNOWLEDGE: You are a near-expert. Questions are sophisticated, reference specific literature or debates, and may be difficult for a generalist coach to handle.",
+}
+
+CREATIVITY_INSTRUCTIONS = {
+    1: "CREATIVITY: Your questions are literal and conventional. You ask the obvious things and stick closely to the stated topic.",
+    2: "CREATIVITY: Your questions are mostly straightforward with occasional minor variations in angle.",
+    3: "CREATIVITY: You show moderate creativity — a mix of conventional and unexpected questions.",
+    4: "CREATIVITY: You regularly find unexpected angles, reframe the topic, or draw in surprising connections.",
+    5: "CREATIVITY: Your questions are highly lateral and unconventional. You challenge premises, invert assumptions, and explore tangential territory.",
+}
+
+_KNOB_MAPS = {
+    "verbosity":      VERBOSITY_INSTRUCTIONS,
+    "confidence":     CONFIDENCE_INSTRUCTIONS,
+    "compliance":     COMPLIANCE_INSTRUCTIONS,
+    "prior_knowledge": PRIOR_KNOWLEDGE_INSTRUCTIONS,
+    "creativity":     CREATIVITY_INSTRUCTIONS,
 }
 
 # ── Terminal output ────────────────────────────────────────────────────────────
@@ -290,7 +272,11 @@ class StudentAgent:
     def __init__(self, persona: dict):
         self.name = persona["name"]
         self.topic = persona["topic"]
-        self._system = persona["system"]
+        knob_notes = []
+        for knob, mapping in _KNOB_MAPS.items():
+            level = max(1, min(5, int(persona.get(knob, 3))))
+            knob_notes.append(mapping[level])
+        self._system = persona["system"].rstrip() + "\n\n" + "\n".join(knob_notes)
         self._client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         self._history: list[dict] = []
 
@@ -321,6 +307,7 @@ class StudentAgent:
         prompt = (
             f"Generate exactly {n} questions about your assignment topic: {self.topic}.\n"
             f"Follow the QFT rules: ask questions only — no statements.\n"
+            f"Keep each question under 12 words.\n"
         )
         if context:
             prompt += f"\nAdditional context / inspiration: {context}\n"
@@ -386,6 +373,12 @@ def _exchange(student_msg: str, stage_id: str,
               student: StudentAgent, coach: QCClient,
               state: WorkspaceState, history: list[dict]) -> str:
     """Send one student message, receive one coach reply; update history."""
+    full_msg = f"[QFT {stage_id}]\n\n{student_msg}"
+    if len(full_msg) > MAX_CHAT_MSG:
+        raise RuntimeError(
+            f"Message too long for API ({len(full_msg)} chars > {MAX_CHAT_MSG}). "
+            f"Reduce questions_2a/2b in the persona or shorten question text."
+        )
     print_student(student.name, student_msg)
     coach_reply = coach.chat(student_msg, stage_id, state, history)
     history += [
