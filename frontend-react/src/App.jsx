@@ -9,6 +9,7 @@ import { stages } from "./stages";
 import { uid } from "./utils";
 import rawWelcome from "./welcome.md?raw";
 import rawOnboarding from "./onboarding.md?raw";
+import rawQuotes from "./quotes.md?raw";
 
 // ── Configuration ─────────────────────────────────────────────────────────
 /** Delay between sequential intro/response message bubbles, in milliseconds. */
@@ -77,6 +78,10 @@ const PIP_GROUPS = [
 // ── Welcome card content (from welcome.md) ────────────────────────────────
 const welcomeTitle = rawWelcome.split("\n")[0].replace(/^#+\s*/, "").trim();
 const welcomeBody = rawWelcome.replace(/^[^\n]*\n/, "").trim();
+
+// ── Rotating subtitle quote (from quotes.md) ──────────────────────────────
+const QUOTES = rawQuotes.split("\n").map(l => l.trim()).filter(Boolean);
+const SESSION_QUOTE = QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
 // ── Onboarding steps (from onboarding.md) ─────────────────────────────────
 const ONBOARDING_STEPS = rawOnboarding.split(/\n---\n/).map((section) => {
@@ -868,7 +873,13 @@ export default function App() {
           </span>
           <div className="app-bar-title-group">
             <span className="app-bar-title">Question Coach</span>
-            <span className="app-bar-subtitle">A guide for structured brainstorming</span>
+            <span className="app-bar-subtitle">
+              {(() => {
+                const tilde = SESSION_QUOTE.lastIndexOf(" ~ ");
+                if (tilde === -1) return <em>{SESSION_QUOTE}</em>;
+                return <><em>{SESSION_QUOTE.slice(0, tilde)}</em>{SESSION_QUOTE.slice(tilde)}</>;
+              })()}
+            </span>
           </div>
           <span
             className={`status-dot ${isConnected ? "connected" : ""}`}
