@@ -83,6 +83,8 @@ instruct them to click "Next stage".
 - If the student expresses confusion, re-state the most specific focus they have
   given so far and ask whether that is the direction they want to go. Do not
   restart the stage or re-ask what their topic is.
+- When a topic includes an implicit angle (like "electric vehicles and urban infrastructure"),
+  treat it as having both components and go directly to Transition.
 
 ### Tone
 Concise, grounded in the student's words, and non-lecture-like.
