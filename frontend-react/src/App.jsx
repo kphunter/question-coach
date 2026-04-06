@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { stages } from "./stages";
 import { uid } from "./utils";
 import rawWelcome from "./welcome.md?raw";
+import rawOnboarding from "./onboarding.md?raw";
 
 // ── Configuration ─────────────────────────────────────────────────────────
 /** Delay between sequential intro/response message bubbles, in milliseconds. */
@@ -76,6 +77,14 @@ const PIP_GROUPS = [
 // ── Welcome card content (from welcome.md) ────────────────────────────────
 const welcomeTitle = rawWelcome.split("\n")[0].replace(/^#+\s*/, "").trim();
 const welcomeBody = rawWelcome.replace(/^[^\n]*\n/, "").trim();
+
+// ── Onboarding steps (from onboarding.md) ─────────────────────────────────
+const ONBOARDING_STEPS = rawOnboarding.split(/\n---\n/).map((section) => {
+  const [firstLine, ...rest] = section.trim().split("\n");
+  return { title: firstLine.replace(/^#+\s*/, "").trim(), body: rest.join("\n").trim() };
+});
+const ONBOARDING_ICONS = ["privacy_tip", "arrow_forward", "tag"];
+const ONBOARDING_ACTIONS = ["Agree & continue", "Next", "Get started"];
 
 // ── Session management ─────────────────────────────────────────────────────
 const SESSION_KEY = "qc-session";
@@ -298,6 +307,13 @@ export default function App() {
   const [settings] = useState(defaultSettings);
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showCardPicker, setShowCardPicker] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !localStorage.getItem(`qc-ob-${getInitialSession().session_id}`)
+  );
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [showNavDemo, setShowNavDemo] = useState(false);
+  const [showBackDemo, setShowBackDemo] = useState(false);
+  const [showPipsDemo, setShowPipsDemo] = useState(false);
 
   const stage = stages[stageIndex];
   const hasWorkspace = stage.inputType !== "textarea";
@@ -686,6 +702,24 @@ export default function App() {
     sendToBackend(text);
   }
 
+  /** Advance or close the onboarding modal. */
+  function handleOnboardingAction() {
+    if (onboardingStep < ONBOARDING_STEPS.length - 1) {
+      const next = onboardingStep + 1;
+      setOnboardingStep(next);
+      setShowNavDemo(next === 1);
+      setShowBackDemo(next === 1);
+      setShowPipsDemo(next === 2);
+    } else {
+      localStorage.setItem(`qc-ob-${sessionId}`, "1");
+      setShowOnboarding(false);
+      setOnboardingStep(0);
+      setShowNavDemo(false);
+      setShowBackDemo(false);
+      setShowPipsDemo(false);
+    }
+  }
+
   /** Clear session and restart from stage 1. */
   function handleReset() {
     if (!window.confirm("Clear all chat history and start over?")) return;
@@ -713,6 +747,11 @@ export default function App() {
     setSessionId(freshSession.session_id);
     setStartedAt(freshSession.started_at);
     setErrorEvents([]);
+    setShowOnboarding(true);
+    setOnboardingStep(0);
+    setShowNavDemo(false);
+    setShowBackDemo(false);
+    setShowPipsDemo(false);
     setQuestionFocus(null);
     setSavedChats(Object.fromEntries(stages.map((s) => [s.id, []])));
     setStageState(
@@ -1095,19 +1134,34 @@ export default function App() {
               )}
 
               {stage.id === "question-focus" && (
-                <ol className="panel-roadmap">
-                  {PIP_GROUPS.map((group) => {
+                <div className="v-stepper">
+                  {PIP_GROUPS.map((group, i) => {
                     const name = stages
                       .find((s) => s.id === group.ids[0])
                       ?.heading.replace(/^Stage\s+\S+\s*·\s*/, "") ?? group.label;
+                    const groupMaxIdx = Math.max(
+                      ...group.ids.map((id) => stages.findIndex((s) => s.id === id))
+                    );
+                    const isCompleted = stageIndex > groupMaxIdx;
                     const isActive = group.ids.includes(stage.id);
+                    const isLast = i === PIP_GROUPS.length - 1;
                     return (
-                      <li key={group.label} className={`roadmap-item${isActive ? " roadmap-active" : ""}`}>
-                        {name}
-                      </li>
+                      <div key={group.label} className="v-step">
+                        <div className="v-step-indicator">
+                          <div className={`v-step-circle${isCompleted ? " completed" : isActive ? " active" : ""}`}>
+                            {isCompleted
+                              ? <span className="material-symbols-rounded v-step-check">check</span>
+                              : group.label}
+                          </div>
+                          {!isLast && <div className={`v-step-line${isCompleted ? " completed" : ""}`} />}
+                        </div>
+                        <div className={`v-step-label${isActive ? " active" : isCompleted ? " completed" : ""}`}>
+                          {name}
+                        </div>
+                      </div>
                     );
                   })}
-                </ol>
+                </div>
               )}
 
               {stage.id === "reflect" && questionFocus && (
@@ -1184,6 +1238,76 @@ export default function App() {
               title="Card Picker"
             />
           </div>
+        </div>
+      )}
+
+      {showOnboarding && (
+        <div className="modal-overlay onboarding-overlay">
+          <div className="modal-card onboarding-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="material-symbols-rounded modal-icon">
+                {ONBOARDING_ICONS[onboardingStep]}
+              </span>
+              <h2 className="modal-title">{ONBOARDING_STEPS[onboardingStep].title}</h2>
+            </div>
+            <div className="modal-body onboarding-body">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {ONBOARDING_STEPS[onboardingStep].body}
+              </ReactMarkdown>
+            </div>
+
+            <div className="onboarding-footer">
+              <div className="onboarding-dots">
+                {ONBOARDING_STEPS.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`onboarding-dot${i === onboardingStep ? " active" : i < onboardingStep ? " done" : ""}`}
+                  />
+                ))}
+              </div>
+              <button
+                className="md-tonal-btn"
+                type="button"
+                onClick={handleOnboardingAction}
+              >
+                {ONBOARDING_ACTIONS[onboardingStep]}
+                <span className="material-symbols-rounded mini-icon">
+                  {onboardingStep < ONBOARDING_STEPS.length - 1 ? "arrow_forward" : "check"}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPipsDemo && (
+        <div className="pips-demo-card">
+          <div className="stage-pips" aria-hidden="true">
+            {PIP_GROUPS.map((group, i) => (
+              <div key={group.label} className={`stage-pip${i === 0 ? " active" : ""}`}>
+                {group.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showBackDemo && (
+        <div className="back-demo-card">
+          <button className="md-text-btn nav-demo-btn" type="button" disabled>
+            <span className="material-symbols-rounded mini-icon">arrow_back</span>
+            Back
+          </button>
+        </div>
+      )}
+
+      {showNavDemo && (
+        <div className="nav-demo-card">
+          <span className="nav-demo-arrow material-symbols-rounded">arrow_downward</span>
+          <button className="md-tonal-btn nav-demo-btn" type="button" disabled>
+            Next stage
+            <span className="material-symbols-rounded mini-icon">arrow_forward</span>
+          </button>
         </div>
       )}
 
