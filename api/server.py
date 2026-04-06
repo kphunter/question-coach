@@ -634,7 +634,7 @@ async def chat(request: ChatRequest):
         )
 
 
-SESSIONS_REPO = "kphunter/qc-analysis-prompt-improvement-bot"
+SESSIONS_REPO = os.getenv("SESSIONS_REPO", "kphunter/qc-analysis-prompt-improvement-bot")
 GITHUB_API = "https://api.github.com"
 
 
