@@ -690,7 +690,7 @@ async def submit_session(request: SessionSubmitRequest):
         # Trigger the analysis workflow
         dispatch_url = f"{GITHUB_API}/repos/{SESSIONS_REPO}/dispatches"
         dispatch_body = {
-            "event_type": "session-submitted",
+            "event_type": "new-session",
             "client_payload": {"session_path": path, "session_id": session_id},
         }
         dispatch_resp = await client.post(dispatch_url, json=dispatch_body, headers=headers)
