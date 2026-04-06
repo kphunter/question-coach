@@ -49,6 +49,6 @@ models/
 
 # Private
 #ai-config.yaml
-inputs/docs/
+#inputs/docs/
 inputs/fetched/
 inputs/.last_incremental_run
