@@ -10,7 +10,10 @@ import re
 from html.parser import HTMLParser
 import html
 
-from html_to_markdown import convert_to_markdown
+try:
+    from html_to_markdown import convert_to_markdown  # html-to-markdown < 1.0
+except ImportError:
+    from html_to_markdown import html_to_markdown as convert_to_markdown  # html-to-markdown >= 1.0
 
 from .base_handler import BaseHandler
 from ..document_processor import ExtractedContent
