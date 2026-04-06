@@ -209,14 +209,16 @@ def print_pass(text: str):
 # ── QC API client ──────────────────────────────────────────────────────────────
 
 class QCClient:
-    def __init__(self, base_url: str, prompt_override: Optional[tuple[str, str]] = None):
+    def __init__(self, base_url: str, prompt_override: Optional[tuple[str, str]] = None,
+                 verify_ssl: bool = True):
         """
         prompt_override: (stage_id, file_path) — replaces the server's prompt for
         that stage with the contents of the local file. Useful for testing a prompt
         edit without deploying.
+        verify_ssl: set False to skip certificate verification (e.g. raw IP endpoints).
         """
         self.base = base_url.rstrip("/")
-        self._http = httpx.Client(timeout=60.0)
+        self._http = httpx.Client(timeout=60.0, verify=verify_ssl)
         self.stage_prompts: dict[str, str] = {}
         self._prompt_override = prompt_override
 
@@ -597,10 +599,11 @@ def _build_session_payload(persona_key: str, state: WorkspaceState,
 
 
 def run_session(persona_key: str, api_base: str,
-                prompt_override: Optional[tuple[str, str]] = None) -> bool:
+                prompt_override: Optional[tuple[str, str]] = None,
+                verify_ssl: bool = True) -> bool:
     persona = PERSONAS[persona_key]
     student = StudentAgent(persona)
-    coach = QCClient(api_base, prompt_override=prompt_override)
+    coach = QCClient(api_base, prompt_override=prompt_override, verify_ssl=verify_ssl)
     state = WorkspaceState()
     history: list[dict] = []
     completed = False
@@ -653,6 +656,8 @@ def main():
                         help="Run a single persona")
     parser.add_argument("--api", default=DEFAULT_API,
                         help=f"QC API base URL (default: {DEFAULT_API})")
+    parser.add_argument("--no-verify", action="store_true",
+                        help="Skip SSL certificate verification (use with raw IP endpoints)")
     parser.add_argument("--stage",
                         help="Stage ID whose prompt you want to override "
                              "(e.g. improve-questions)")
@@ -671,7 +676,8 @@ def main():
     prompt_override = (args.stage, args.prompt_file) if args.stage else None
 
     to_run = [args.persona] if args.persona else list(PERSONAS.keys())
-    results = {key: run_session(key, args.api, prompt_override) for key in to_run}
+    results = {key: run_session(key, args.api, prompt_override,
+                                verify_ssl=not args.no_verify) for key in to_run}
 
     print_header("Results")
     all_passed = all(results.values())
