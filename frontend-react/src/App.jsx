@@ -379,8 +379,9 @@ export default function App() {
   }, [messages, isProcessing]);
 
   // ── Schedule delayed intro parts for stage 0 on first visit ──────────────
+  // Skipped if onboarding is active — handleOnboardingAction triggers it instead.
   useEffect(() => {
-    if (initialWasFresh.current && stages[0].messageParts?.length > 0) {
+    if (initialWasFresh.current && !showOnboarding && stages[0].messageParts?.length > 0) {
       scheduleIntroParts(stages[0].messageParts, 0, INTRO_DELAY_MS);
     }
     return () => clearIntroTimers();
@@ -717,6 +718,10 @@ export default function App() {
       setShowNavDemo(false);
       setShowBackDemo(false);
       setShowPipsDemo(false);
+      // Now safe to start the stage 0 intro timer
+      if (stageIndex === 0 && stages[0].messageParts?.length > 0) {
+        scheduleIntroParts(stages[0].messageParts, 0, INTRO_DELAY_MS);
+      }
     }
   }
 
@@ -768,9 +773,6 @@ export default function App() {
     setHighlightNextBtn(false);
     setHighlightPips(false);
 
-    if (s0.messageParts?.length > 0) {
-      scheduleIntroParts(s0.messageParts, 0, INTRO_DELAY_MS);
-    }
   }
 
   /** Submit serialized stage data (questions / classifications / priorities). */
