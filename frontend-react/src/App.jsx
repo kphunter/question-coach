@@ -189,19 +189,34 @@ function extractQuestionFocus(msgs) {
 
   function clean(raw) {
     let text = raw;
-    // Fallback path: "[focus]. How about we start with that..." → take the part before
-    if (/how about we start with that/i.test(text)) {
-      text = text.split(/how about we start with that/i)[0];
-    } else {
-      // Normal path: "[focus]. Does this feel..." → take the part before
-      text = text.split(/does this feel/i)[0];
+    // Split on known confirmation/transition phrases — take only the focus part
+    const splitters = [
+      /does this feel/i,
+      /does that capture/i,
+      /does that feel/i,
+      /how about we start with that/i,
+      /this focus seems/i,
+      /that focus seems/i,
+      /shall we go with/i,
+      /ready to start/i,
+      /let['']?s go with/i,
+    ];
+    for (const re of splitters) {
+      if (re.test(text)) {
+        text = text.split(re)[0];
+        break;
+      }
     }
     text = text.trim().replace(/[.,!?]+$/, "").trim();
+    // Strip conversational preamble: "You're interested in...", "You're looking at...",
+    // "You're asking if/whether...", "So you want to explore..."
+    text = text.replace(/^(?:so\s+)?you['']?re\s+(?:interested\s+in|looking\s+at|asking\s+(?:if|whether|about)|focused\s+on|wanting\s+to\s+explore)\s+(?:whether\s+|how\s+|if\s+)?/i, "");
+    text = text.replace(/^(?:so\s+)?you\s+want\s+to\s+(?:explore|understand|know|look\s+at)\s+/i, "");
     // Strip "Your (question) focus (is|on):" prefix
     text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
     // Strip generic preamble openers like "That's a clear focus —", "Great —"
     text = text.replace(/^[^—–]*[—–]\s*/, "");
-    // Strip trailing judgment phrases like "is a good focus", "is a clear focus"
+    // Strip trailing judgment phrases
     text = text.replace(/\s+is\s+a\s+\w+\s+(focus|direction|starting point)\.?$/i, "").trim();
     return text ? text.charAt(0).toUpperCase() + text.slice(1) : null;
   }
