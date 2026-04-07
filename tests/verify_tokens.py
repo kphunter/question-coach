@@ -2,6 +2,8 @@
 """
 Token and connectivity pre-flight check.
 
+No third-party packages required — uses only Python stdlib.
+
 Run from question-coach repo (default):
     python tests/verify_tokens.py
 
@@ -24,11 +26,12 @@ Checks (analysis mode):
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
-
-import httpx
+import urllib.error
+import urllib.request
 
 ANALYSIS_REPO = "kphunter/qc-analysis-prompt-improvement-bot"
 QC_REPO       = "kphunter/question-coach"
@@ -64,6 +67,29 @@ def section(title):
     print(f"\n{BOLD}{title}{RESET}")
 
 
+def _gh_request(token: str, path: str, timeout: int = 10):
+    """Make a GitHub API request. Returns (status_code, parsed_json)."""
+    url = f"https://api.github.com/{path}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read())
+        except Exception:
+            body = {}
+        return e.code, body
+    except Exception as e:
+        return None, str(e)
+
+
 def check_env_var(name: str, hint: str = "") -> str | None:
     value = os.environ.get(name, "")
     if not value:
@@ -77,64 +103,51 @@ def check_env_var(name: str, hint: str = "") -> str | None:
 
 
 def check_repo_access(token: str, repo: str, label: str) -> bool:
-    try:
-        resp = httpx.get(
-            f"https://api.github.com/repos/{repo}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            ok(f"{label}: accessible ({resp.json().get('visibility', '?')})")
-            return True
-        fail(f"{label}: {resp.status_code} — {resp.json().get('message', '')}")
+    status, body = _gh_request(token, f"repos/{repo}")
+    if status is None:
+        fail(f"{label}: request failed — {body}")
         return False
-    except Exception as e:
-        fail(f"{label}: request failed — {e}")
-        return False
+    if status == 200:
+        ok(f"{label}: accessible ({body.get('visibility', '?')})")
+        return True
+    fail(f"{label}: {status} — {body.get('message', '')}")
+    return False
 
 
 def check_contents_access(token: str, repo: str, path: str, label: str) -> bool:
-    try:
-        resp = httpx.get(
-            f"https://api.github.com/repos/{repo}/contents/{path}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            ok(f"{label}: readable")
-            return True
-        fail(f"{label}: {resp.status_code} — {resp.json().get('message', '')}")
+    status, body = _gh_request(token, f"repos/{repo}/contents/{path}")
+    if status is None:
+        fail(f"{label}: request failed — {body}")
         return False
-    except Exception as e:
-        fail(f"{label}: request failed — {e}")
-        return False
+    if status == 200:
+        ok(f"{label}: readable")
+        return True
+    fail(f"{label}: {status} — {body.get('message', '')}")
+    return False
 
 
 def check_write_access(token: str, repo: str, label: str):
     """Check push permission via the repo permissions field."""
-    try:
-        resp = httpx.get(
-            f"https://api.github.com/repos/{repo}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            perms = resp.json().get("permissions", {})
-            if perms.get("push"):
-                ok(f"{label}: write permission confirmed")
-            else:
-                fail(f"{label}: token can read but NOT write — check repo access scope")
+    status, body = _gh_request(token, f"repos/{repo}")
+    if status is None:
+        fail(f"{label}: request failed — {body}")
+        return
+    if status == 200:
+        perms = body.get("permissions", {})
+        if perms.get("push"):
+            ok(f"{label}: write permission confirmed")
         else:
-            fail(f"{label}: {resp.status_code} — {resp.json().get('message', '')}")
-    except Exception as e:
-        fail(f"{label}: request failed — {e}")
+            fail(f"{label}: token can read but NOT write — check repo access scope")
+    else:
+        fail(f"{label}: {status} — {body.get('message', '')}")
 
 
 def check_api(api_base: str):
     section(f"4. API server ({api_base})")
+    url = f"{api_base}/health"
     try:
-        resp = httpx.get(f"{api_base}/health", timeout=10)
-        data = resp.json()
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
         ok(f"Reachable — status: {data.get('status', '?')}  "
            f"vectors: {data.get('collection_count', '?')}")
     except Exception as e:
@@ -165,29 +178,23 @@ def check_docker_container_token():
 
 def check_actions_secrets(token: str):
     section(f"6. GitHub Actions secrets in {ANALYSIS_REPO}")
-    try:
-        resp = httpx.get(
-            f"https://api.github.com/repos/{ANALYSIS_REPO}/actions/secrets",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            warn(f"Cannot list secrets ({resp.status_code}) — "
-                 "token may lack 'secrets' read permission; check manually in repo Settings")
-            return
-        names = {s["name"] for s in resp.json().get("secrets", [])}
-        for secret in REQUIRED_SECRETS:
-            if secret in names:
-                ok(f"Secret {secret} is set")
-            else:
-                fail(f"Secret {secret} is MISSING — add it in repo Settings → Secrets")
-    except Exception as e:
-        warn(f"Secrets check failed: {e}")
+    status, body = _gh_request(token, f"repos/{ANALYSIS_REPO}/actions/secrets")
+    if status != 200:
+        warn(f"Cannot list secrets ({status}) — "
+             "token may lack 'secrets' read permission; check manually in repo Settings")
+        return
+    names = {s["name"] for s in body.get("secrets", [])}
+    for secret in REQUIRED_SECRETS:
+        if secret in names:
+            ok(f"Secret {secret} is set")
+        else:
+            fail(f"Secret {secret} is MISSING — add it in repo Settings → Secrets")
 
 
 def run_coach_mode(api_base: str):
     print(f"{BOLD}Mode: question-coach (coach){RESET}")
 
+    section("1. Shell environment")
     token = check_env_var("SESSIONS_REPO_TOKEN",
                           "export it before running docker compose")
 

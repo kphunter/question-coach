@@ -57,6 +57,26 @@ Exits `0` if all selected personas complete without error, `1` otherwise.
 
 ---
 
+## Token Pre-flight Check (`verify_tokens.py`)
+
+Verifies that the required tokens are set and have the correct permissions
+before running the stack. Uses only Python stdlib — no installation needed.
+
+```bash
+# Check SESSIONS_REPO_TOKEN (run from question-coach repo)
+python3 tests/verify_tokens.py
+
+# Point at the production API instead of localhost
+python3 tests/verify_tokens.py --api https://your-vm-host
+
+# Check QC_ANALYSIS_WRITER (run from either repo)
+python3 tests/verify_tokens.py --mode analysis
+```
+
+Exits `0` if all checks pass, `1` otherwise.
+
+---
+
 ## Divergence Detector (`flag_sessions.py`)
 
 A lightweight heuristic scanner that reads session JSON files and flags
