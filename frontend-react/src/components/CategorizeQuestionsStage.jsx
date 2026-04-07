@@ -164,7 +164,7 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
         <h3>Classify questions</h3>
         <p>
           Drag each question into Open or Closed.{' '}
-          {!submitted && onQuestionClick && <span className="hint-inline">Tap a question to copy it to the chat box.</span>}
+          {submitted && onQuestionClick && <span className="hint-inline">Tap a question to copy it to the rewrite box.</span>}
         </p>
       </div>
 

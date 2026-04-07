@@ -78,15 +78,24 @@ placeholder: Review your categorized questions...
 ### Instruction
 
 Well done. Now, let's spend a few moments classifying your questions as either *Open* or *Closed*.
-| Open | Closed |
-|------|--------|
-| **Definition:** Require explanation, discussion, or interpretation to answer<br>**Example:** "How did the passage of this law change everyday life for low-income families?" | **Definition:** Can be answered with a single word, a yes/no, or a simple fact<br>**Example:** "When was this law passed?" |
 
 ### Message 1
 
-[slow] Drag each question into the **Open** or **Closed** area.
+|  | Description | Example |
+|--------------|-------------|---------|
+| Open | Requires explanation, discussion, or interpretation to answer | *"How did the passage of this law change everyday life for low-income families?"* |
 
 ### Message 2
+
+|  | Description | Example |
+|--------------|-------------|---------|
+| Closed | Can be answered with a single word, a yes/no, or a simple fact | *"When was this law passed?"* |
+
+### Message 3
+
+Drag each question into the **Open** or **Closed** area.
+
+### Message 4
 
 When you're done, submit the classification so we can discuss.
 
