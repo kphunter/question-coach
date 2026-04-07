@@ -182,19 +182,37 @@ function saveSession(data) {
 
 /** Extract question focus from Stage 1 messages — no localStorage regex needed. */
 function extractQuestionFocus(msgs) {
-  const focus = [...msgs]
+  const candidates = [...msgs]
     .reverse()
-    .find((m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text));
-  if (!focus) return null;
-  let text = focus.text.split(/does this feel/i)[0].trim().replace(/[.,!?]+$/, "").trim();
-  // Strip "Your (question) focus (is|on):" prefix
-  text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
-  // Strip generic preamble openers like "That's a clear focus —", "Great —", "So —"
-  text = text.replace(/^[^—–]*[—–]\s*/, "");
-  // Strip trailing judgment phrases like "is a good focus", "is a clear focus", etc.
-  text = text.replace(/\s+is\s+a\s+\w+\s+(focus|direction|starting point)\.?$/i, "").trim();
-  text = text.charAt(0).toUpperCase() + text.slice(1);
-  return text || null;
+    .filter((m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text));
+  if (!candidates.length) return null;
+
+  function clean(raw) {
+    let text = raw;
+    // Fallback path: "[focus]. How about we start with that..." → take the part before
+    if (/how about we start with that/i.test(text)) {
+      text = text.split(/how about we start with that/i)[0];
+    } else {
+      // Normal path: "[focus]. Does this feel..." → take the part before
+      text = text.split(/does this feel/i)[0];
+    }
+    text = text.trim().replace(/[.,!?]+$/, "").trim();
+    // Strip "Your (question) focus (is|on):" prefix
+    text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
+    // Strip generic preamble openers like "That's a clear focus —", "Great —"
+    text = text.replace(/^[^—–]*[—–]\s*/, "");
+    // Strip trailing judgment phrases like "is a good focus", "is a clear focus"
+    text = text.replace(/\s+is\s+a\s+\w+\s+(focus|direction|starting point)\.?$/i, "").trim();
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : null;
+  }
+
+  // Try the most recent candidate first; if it still looks like a transition
+  // phrase after cleaning (very short or starts with "How about"), try the next one.
+  for (const candidate of candidates) {
+    const result = clean(candidate.text);
+    if (result && result.split(" ").length >= 4) return result;
+  }
+  return clean(candidates[0].text);
 }
 
 /** Snapshot structured outputs when leaving a stage, for the analysis agent. */
