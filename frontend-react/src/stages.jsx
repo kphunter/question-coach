@@ -196,7 +196,10 @@ const stageLogic = {
         .map((id) => filled.find((q) => q.id === id))
         .filter(Boolean)
         .slice(0, 3)
-        .map((q, i) => `${i + 1}. ${q.text}`);
+        .map((q, i) => {
+          const originalNum = filled.indexOf(q) + 1;
+          return `${i + 1}. ${q.text} [originally question ${originalNum}]`;
+        });
       return ['My top 3 questions:', ...(top3.length ? top3 : ['(none)'])].join('\n');
     },
     Component: PrioritizeQuestionsStage,

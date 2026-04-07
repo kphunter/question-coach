@@ -19,7 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useMemo, useState } from "react";
 
-function SortablePriorityItem({ id, rank, text }) {
+function SortablePriorityItem({ id, rank, originalNum, text }) {
   const {
     attributes,
     listeners,
@@ -44,7 +44,10 @@ function SortablePriorityItem({ id, rank, text }) {
       {...listeners}
     >
       <div className="priority-rank">{rank}</div>
-      <div className="priority-text">{text}</div>
+      <div className="priority-text">
+        {text}
+        <span className="priority-original-num">#{originalNum}</span>
+      </div>
       <span className="material-symbols-rounded drag-indicator">
         drag_indicator
       </span>
@@ -54,6 +57,11 @@ function SortablePriorityItem({ id, rank, text }) {
 
 export default function PrioritizeQuestionsStage({ input, onSubmit, onSend }) {
   const { questions, priorities: initialPriorities } = input;
+  // Map question id → original question number (1-based, stable across reordering)
+  const originalNumMap = useMemo(
+    () => Object.fromEntries(questions.map((q, i) => [q.id, i + 1])),
+    [questions],
+  );
   const [priorities, setPriorities] = useState(initialPriorities);
   const [activeId, setActiveId] = useState(null);
   const sensors = useSensors(
@@ -109,6 +117,7 @@ export default function PrioritizeQuestionsStage({ input, onSubmit, onSend }) {
                   key={question.id}
                   id={question.id}
                   rank={index + 1}
+                  originalNum={originalNumMap[question.id]}
                   text={question.text}
                 />
               ))}

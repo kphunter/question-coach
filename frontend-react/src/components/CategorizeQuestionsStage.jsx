@@ -73,10 +73,12 @@ const REWRITE_PHASES = [
   {
     label: 'Rewrite an Open Question',
     placeholder: 'Transform an OPEN question into a closed question and click submit',
+    sendLabel: 'Rewrite (open → closed)',
   },
   {
     label: 'Rewrite a Closed Question',
     placeholder: 'Transform a CLOSED question into an open question and click submit',
+    sendLabel: 'Rewrite (closed → open)',
   },
 ]
 
@@ -142,7 +144,7 @@ export default function CategorizeQuestionsStage({ input, onSubmit, onSend, onQu
   function handleRewriteSubmit() {
     const text = rewriteText.trim()
     if (!text) return
-    onSendText?.(text)
+    onSendText?.(text, phase.sendLabel)
     setRewriteText('')
     setRewritePhase((p) => Math.min(p + 1, REWRITE_PHASES.length - 1))
     rewriteRef.current?.focus()

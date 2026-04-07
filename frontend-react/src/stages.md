@@ -78,14 +78,9 @@ placeholder: Review your categorized questions...
 ### Instruction
 
 Well done. Now, let's spend a few moments classifying your questions as either *Open* or *Closed*.
-
-**Open questions** require explanation, discussion, or interpretation to answer:
-
-- *"How did the passage of this law change everyday life for low-income families?"*
-
-**Closed questions** can be answered with a single word, a yes/no, or a simple fact:
-
-- *"When was this law passed?"*
+| Open | Closed |
+|------|--------|
+| **Definition:** Require explanation, discussion, or interpretation to answer<br>**Example:** "How did the passage of this law change everyday life for low-income families?" | **Definition:** Can be answered with a single word, a yes/no, or a simple fact<br>**Example:** "When was this law passed?" |
 
 ### Message 1
 
@@ -131,13 +126,13 @@ placeholder: Explain your top 3 choices...
 
 ### Instruction
 
-Now that you’ve seen your Reflective Thinking Card, arrange your questions.
+Now, arrange your questions in order of priority.
 
-Use the card's task to prioritize your questions in a meaninful way.
+Think about which three questions matter most to you — for example, questions you consider most important, that will guide your reading or research, or that you feel most drawn to explore.
 
 ### Message 1
 
-[slow] When you're ready, click the "Submit priorities" button to let me know what they are..
+[slow] When you’re ready, click the "Submit priorities" button to let me know what they are.
 
 
 

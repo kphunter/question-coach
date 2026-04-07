@@ -191,6 +191,8 @@ function extractQuestionFocus(msgs) {
   text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
   // Strip generic preamble openers like "That's a clear focus —", "Great —", "So —"
   text = text.replace(/^[^—–]*[—–]\s*/, "");
+  // Strip trailing judgment phrases like "is a good focus", "is a clear focus", etc.
+  text = text.replace(/\s+is\s+a\s+\w+\s+(focus|direction|starting point)\.?$/i, "").trim();
   text = text.charAt(0).toUpperCase() + text.slice(1);
   return text || null;
 }
@@ -425,7 +427,9 @@ export default function App() {
     stageIndexRef.current = stageIndex;
     setDraftText("");
     setShowCardPicker(false);
-    pendingCardIntro.current = null;
+    // Note: pendingCardIntro is NOT cleared here. goToStage sets it after calling
+    // setStageIndex, so the effect would race and wipe it before the card picker opens.
+    // Stale firing is prevented by the stageIndexRef guard inside scheduleIntroParts.
   }, [stageIndex]);
 
   // ── Fetch stage prompts + poll health ─────────────────────────────────────
@@ -782,9 +786,6 @@ export default function App() {
     setStageIndex(0);
     setMemory(initialMemory());
     setMessages([defaultMsg]);
-    setHighlightNextBtn(false);
-    setHighlightPips(false);
-
   }
 
   /** Submit serialized stage data (questions / classifications / priorities). */
@@ -1148,7 +1149,7 @@ export default function App() {
                   onSend={handleSubmitStage}
                   {...(stage.inputType === "categorize" && {
                     onQuestionClick: (text) => setDraftText(text),
-                    onSendText: (text) => sendToBackend(text),
+                    onSendText: (text, label) => sendToBackend(label ? `${label}: ${text}` : text),
                   })}
                 />
               )}
@@ -1184,12 +1185,47 @@ export default function App() {
                 </div>
               )}
 
-              {stage.id === "reflect" && questionFocus && (
-                <div className="panel-focus-reminder">
-                  <span className="panel-focus-label">Question focus</span>
-                  <span className="panel-focus-text">{questionFocus}</span>
-                </div>
-              )}
+              {stage.id === "reflect" && (() => {
+                const divCard = stageState["produce-questions-b"]?.data?.card_reported;
+                const reflCard = stageState["prioritize-questions-a"]?.data?.card_reported;
+                const top3 = stageState["prioritize-questions-b"]?.data?.top_questions ?? [];
+                // Extract "Title: Foo" from raw card text, fall back to first line
+                const cardTitle = (raw) => {
+                  if (!raw) return null;
+                  const m = raw.match(/Title:\s*(.+)/i);
+                  return m ? m[1].trim() : raw.split('\n')[0].trim();
+                };
+                return (
+                  <div className="journey-summary">
+                    {questionFocus && (
+                      <div className="journey-row">
+                        <span className="journey-label">Question focus</span>
+                        <span className="journey-value">{questionFocus}</span>
+                      </div>
+                    )}
+                    {cardTitle(divCard) && (
+                      <div className="journey-row">
+                        <span className="journey-label">Divergent card</span>
+                        <span className="journey-value">{cardTitle(divCard)}</span>
+                      </div>
+                    )}
+                    {cardTitle(reflCard) && (
+                      <div className="journey-row">
+                        <span className="journey-label">Reflective card</span>
+                        <span className="journey-value">{cardTitle(reflCard)}</span>
+                      </div>
+                    )}
+                    {top3.length > 0 && (
+                      <div className="journey-row">
+                        <span className="journey-label">Top questions</span>
+                        <ol className="journey-top3">
+                          {top3.map((q, i) => <li key={i}>{q}</li>)}
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <div className="panel-nav">
               <button
