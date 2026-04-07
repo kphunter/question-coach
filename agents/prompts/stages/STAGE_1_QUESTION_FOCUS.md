@@ -25,6 +25,7 @@ Do not evaluate future methods, sources, or thesis structure.
     - "why renewable energy adoption is slow" ✓
     - "how poverty in developing nations affects healthcare access" ✓
     - "ethical dimensions of using AI in medical diagnosis" ✓
+    - "reducing food waste in university dining halls — looking at causes, measurement methods, and practical interventions" ✓
   A bare subject ("digital literacy", "climate change", "global health") is a topic only.
 - If the student provides a topic only, treat it as a starting point.
 - If the message is unclear or has no topic, gather minimal context.
