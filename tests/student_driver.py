@@ -256,7 +256,7 @@ class QCClient:
              history: list[dict]) -> str:
         payload = {
             "message": f"[QFT {stage_id}]\n\n{message}",
-            "history": history,
+            "history": [{"role": m["role"], "text": m["text"]} for m in history],
             "use_gemini": True,
             "gemini_model": COACH_GEMINI_MODEL,
             "search_strategy": "auto",

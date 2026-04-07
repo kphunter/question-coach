@@ -187,9 +187,12 @@ function extractQuestionFocus(msgs) {
     .find((m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text));
   if (!focus) return null;
   let text = focus.text.split(/does this feel/i)[0].trim().replace(/[.,!?]+$/, "").trim();
+  // Strip "Your (question) focus (is|on):" prefix
   text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
+  // Strip generic preamble openers like "That's a clear focus —", "Great —", "So —"
+  text = text.replace(/^[^—–]*[—–]\s*/, "");
   text = text.charAt(0).toUpperCase() + text.slice(1);
-  return text || focus.text;
+  return text || null;
 }
 
 /** Snapshot structured outputs when leaving a stage, for the analysis agent. */
@@ -330,6 +333,8 @@ export default function App() {
   const scrollToTopOnNextRender = useRef(false);
   // Holds { parts, stageIdx } for card stages — fires when the modal is closed.
   const pendingCardIntro = useRef(null);
+  // Always reflects current stageIndex so setTimeout callbacks can guard against stale stage.
+  const stageIndexRef = useRef(stageIndex);
 
   // True only when the very first page load lands on Stage 0 with no prior chat.
   const initialWasFresh = useRef(
@@ -354,6 +359,7 @@ export default function App() {
       const wait = slow ? SECONDARY_DELAY_MS : delayMs;
       elapsed += wait;
       const id = setTimeout(() => {
+        if (stageIndexRef.current !== stageIdx) return;
         setMessages((prev) => [
           ...prev,
           {
@@ -416,6 +422,7 @@ export default function App() {
 
   // ── Reset draft + close card picker when changing stages ──────────────────
   useEffect(() => {
+    stageIndexRef.current = stageIndex;
     setDraftText("");
     setShowCardPicker(false);
     pendingCardIntro.current = null;
