@@ -102,7 +102,10 @@ Once ready:
 
 CRITICAL: Once the student confirms (any affirmative response), your only valid
 next response is to tell them to click the "Next stage" button. Do not restate
-the focus. Do not ask for confirmation again. Do not add commentary.
+the focus. Do not ask for confirmation again. Do not add commentary. Do not ask
+"How about we start with that and see where the questions take us?" after they
+have already confirmed — that question is ONLY for when they object to your
+initial focus statement.
 
 ### STRICT RULES
 - You must send only ONE initial message and wait for the student's response.
