@@ -86,9 +86,9 @@ def serialize_classifications(state: WorkspaceState) -> str:
         + ([f"  {q}" for q in open_qs] or ["  (none)"])
         + ["", "Closed questions:"]
         + ([f"  {q}" for q in closed_qs] or ["  (none)"])
+        + ["", "Unsorted questions:"]
+        + ([f"  {q}" for q in unsorted] or ["(none)"])
     )
-    if unsorted:
-        lines += ["", "Unsorted:"] + [f"  {q}" for q in unsorted]
     return "\n".join(lines)
 
 
@@ -255,12 +255,12 @@ class QCClient:
     def chat(self, message: str, stage_id: str, state: WorkspaceState,
              history: list[dict]) -> str:
         payload = {
-            "message": f"[QFT {stage_id}]\n\n{message}",
+            "message": message,
             "history": [{"role": m["role"], "text": m["text"]} for m in history],
             "use_gemini": True,
             "gemini_model": COACH_GEMINI_MODEL,
             "search_strategy": "auto",
-            "search_limit": 5,
+            "search_limit": 1,
             "system_prompt": self._build_system_prompt(stage_id, state),
         }
         resp = self._http.post(f"{self.base}/chat", json=payload).raise_for_status()
@@ -382,8 +382,7 @@ def _exchange(student_msg: str, stage_id: str,
               student: StudentAgent, coach: QCClient,
               state: WorkspaceState, history: list[dict]) -> str:
     """Send one student message, receive one coach reply; update history."""
-    full_msg = f"[QFT {stage_id}]\n\n{student_msg}"
-    if len(full_msg) > MAX_CHAT_MSG:
+    if len(student_msg) > MAX_CHAT_MSG:
         raise RuntimeError(
             f"Message too long for API ({len(full_msg)} chars > {MAX_CHAT_MSG}). "
             f"Reduce questions_2a/2b in the persona or shorten question text."
@@ -402,20 +401,37 @@ def run_stage_1(persona: dict, student: StudentAgent, coach: QCClient,
                 state: WorkspaceState, history: list[dict]):
     print_stage("question-focus", "Stage 1 · Question Focus")
 
-    opening = student.respond(
+    # Turn 1 — present only the broad topic (no angle yet)
+    broad_topic = student.respond(
         "",
-        context=f"Introduce your assignment topic to the coach. Your topic: {student.topic}"
+        context=(
+            f"Introduce your assignment topic to the coach in one short sentence. "
+            f"Give only the BROAD topic, not the specific angle you care about. "
+            f"Your full topic is: {student.topic} — but only share the general area for now."
+        )
     )
-    state.question_focus = opening.split(".")[0].strip()
-    coach_reply = _exchange(opening, "question-focus", student, coach, state, history)
+    coach_reply = _exchange(broad_topic, "question-focus", student, coach, state, history)
 
-    follow_up = student.respond(
+    # Turn 2 — respond to the coach's narrowing question with the specific angle
+    angle = student.respond(
         coach_reply,
-        context="Continue the conversation briefly, then signal you are ready by ending with READY."
+        context=(
+            f"The coach is asking you to narrow your topic. Share the specific angle "
+            f"you care about. Your full topic is: {student.topic}. "
+            f"Keep your response short and natural — one sentence."
+        )
     )
-    follow_up_clean = follow_up.replace("READY", "").strip()
-    if follow_up_clean:
-        _exchange(follow_up_clean, "question-focus", student, coach, state, history)
+    coach_reply = _exchange(angle, "question-focus", student, coach, state, history)
+
+    # Turn 3 — confirm the synthesized focus the coach offers
+    confirm = student.respond(
+        coach_reply,
+        context="The coach has proposed a question focus. Confirm it briefly — say 'yes' or 'sounds good'."
+    )
+    coach_reply = _exchange(confirm, "question-focus", student, coach, state, history)
+
+    # Extract question focus from the coach's synthesis
+    state.question_focus = student.topic
 
 
 def run_stage_2a(persona: dict, student: StudentAgent, coach: QCClient,
@@ -467,16 +483,46 @@ def run_stage_3(persona: dict, student: StudentAgent, coach: QCClient,
     state.classifications = student.classify_questions(state.questions)
     print_info("Classifications:\n" + textwrap.indent(serialize_classifications(state), "    "))
 
-    submit = f"Here are my classifications:\n{serialize_classifications(state)}"
+    submit = serialize_classifications(state)
     coach_reply = _exchange(submit, "improve-questions", student, coach, state, history)
 
-    # Rewrite turn — coach typically asks for one open→closed and one closed→open
-    rewrite = student.respond(
+    # Rewrite 1: open → closed
+    open_qs = [q for q in state.questions if state.classifications.get(q) == "open"]
+    if open_qs:
+        rewrite = student.respond(
+            coach_reply,
+            context=(
+                f"The coach is asking you to convert an OPEN question into a CLOSED question. "
+                f"Pick one of your open questions and rewrite it as a closed question. "
+                f"Respond with only the rewritten question text, nothing else."
+            )
+        )
+        if rewrite.strip():
+            msg = f"Rewrite (open → closed): {rewrite.strip()}"
+            coach_reply = _exchange(msg, "improve-questions", student, coach, state, history)
+
+    # Rewrite 2: closed → open
+    closed_qs = [q for q in state.questions if state.classifications.get(q) == "closed"]
+    if closed_qs:
+        rewrite = student.respond(
+            coach_reply,
+            context=(
+                f"The coach is asking you to convert a CLOSED question into an OPEN question. "
+                f"Pick one of your closed questions and rewrite it as an open question. "
+                f"Respond with only the rewritten question text, nothing else."
+            )
+        )
+        if rewrite.strip():
+            msg = f"Rewrite (closed → open): {rewrite.strip()}"
+            coach_reply = _exchange(msg, "improve-questions", student, coach, state, history)
+
+    # Reflection turn — coach asks about value of open/closed question types
+    reflect = student.respond(
         coach_reply,
-        context="The coach may be asking you to rewrite a question. Do so naturally and briefly."
+        context="The coach is asking a reflection question about question types. Answer briefly."
     )
-    if rewrite.strip():
-        _exchange(rewrite, "improve-questions", student, coach, state, history)
+    if reflect.strip():
+        _exchange(reflect, "improve-questions", student, coach, state, history)
 
 
 def run_stage_4a(persona: dict, student: StudentAgent, coach: QCClient,
@@ -487,18 +533,40 @@ def run_stage_4a(persona: dict, student: StudentAgent, coach: QCClient,
     state.card_reflective = card
     print_info(f"Card drawn: {card}")
 
+    # Turn 1 — report the card drawn
     card_reply = student.respond(
         "What card did you draw?",
         context=(
             f"You drew this reflective thinking card: '{card}'. "
-            "Tell the coach which card you drew and briefly react to it."
+            "Tell the coach which card you drew. Include the full title, description, "
+            "and instructions from the card."
         )
     )
     coach_reply = _exchange(card_reply, "prioritize-questions-a", student, coach, state, history)
 
-    follow_up = student.respond(coach_reply)
-    if follow_up.strip():
-        _exchange(follow_up, "prioritize-questions-a", student, coach, state, history)
+    # Turn 2 — coach asks if the description resonates; respond
+    resonance = student.respond(
+        coach_reply,
+        context="The coach is asking if the card resonates with you. Answer briefly and naturally."
+    )
+    if resonance.strip():
+        coach_reply = _exchange(resonance, "prioritize-questions-a", student, coach, state, history)
+
+    # Turn 3 — coach asks if instructions are clear; respond
+    clarity = student.respond(
+        coach_reply,
+        context="The coach is asking if you understand the card's instructions. Answer briefly."
+    )
+    if clarity.strip():
+        coach_reply = _exchange(clarity, "prioritize-questions-a", student, coach, state, history)
+
+    # Turn 4 — coach invites reflection on the card's perspective; respond
+    reflection = student.respond(
+        coach_reply,
+        context="The coach is asking what you think about the card's idea. Share a brief thought."
+    )
+    if reflection.strip():
+        _exchange(reflection, "prioritize-questions-a", student, coach, state, history)
 
 
 def run_stage_4b(persona: dict, student: StudentAgent, coach: QCClient,
@@ -509,14 +577,27 @@ def run_stage_4b(persona: dict, student: StudentAgent, coach: QCClient,
     state.priorities = student.pick_priorities(state.questions, state.card_reflective)
     print_info("Priorities:\n" + textwrap.indent(serialize_priorities(state), "    "))
 
+    # Submit priorities
     coach_reply = _exchange(
         serialize_priorities(state),
         "prioritize-questions-b", student, coach, state, history
     )
 
-    follow_up = student.respond(coach_reply)
-    if follow_up.strip():
-        _exchange(follow_up, "prioritize-questions-b", student, coach, state, history)
+    # Coach probes criteria — respond
+    criteria = student.respond(
+        coach_reply,
+        context="The coach is observing something about your choices. Respond briefly and thoughtfully."
+    )
+    if criteria.strip():
+        coach_reply = _exchange(criteria, "prioritize-questions-b", student, coach, state, history)
+
+    # Coach asks what connects the three — respond
+    thread = student.respond(
+        coach_reply,
+        context="The coach is asking what your top 3 have in common. Answer in one sentence."
+    )
+    if thread.strip():
+        _exchange(thread, "prioritize-questions-b", student, coach, state, history)
 
 
 def run_stage_5(persona: dict, student: StudentAgent, coach: QCClient,
@@ -546,15 +627,18 @@ def run_stage_6(persona: dict, student: StudentAgent, coach: QCClient,
                 state: WorkspaceState, history: list[dict]):
     print_stage("reflect", "Stage 6 · Reflect")
 
-    opening = student.respond(
-        "",
-        context="The coach will ask you 3 reflection questions about this process. Engage genuinely."
-    )
-    coach_reply = _exchange(opening, "reflect", student, coach, state, history)
+    # Signal readiness — the coach should then ask question 1
+    coach_reply = _exchange("Ready.", "reflect", student, coach, state, history)
 
-    # Coach asks 3 reflection questions; respond to each
-    for _ in range(3):
-        reply = student.respond(coach_reply)
+    # Coach asks 3 reflection questions one at a time; respond to each
+    for i in range(3):
+        reply = student.respond(
+            coach_reply,
+            context=(
+                "The coach is asking a reflection question about this process. "
+                "Answer genuinely in 1-2 sentences. Do not summarize the whole session."
+            )
+        )
         if not reply.strip():
             break
         coach_reply = _exchange(reply, "reflect", student, coach, state, history)
