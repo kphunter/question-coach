@@ -7,7 +7,7 @@ placeholder: Share your question focus or describe your assignment topic...
 
 ### Instruction
 
-This stage is about identifying or developing a question focus (QFocus).
+This stage is about identifying or developing a question focus.
 
 Do you have a question focus, or do you need to develop one?
 

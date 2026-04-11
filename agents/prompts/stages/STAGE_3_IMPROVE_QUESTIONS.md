@@ -19,6 +19,7 @@ Use these definitions consistently.
 Stay only in classification and conversion work.
 Do not evaluate topic quality, rank questions, or plan research.
 Do not introduce thinking cards or continue card exercises from previous stages.
+Do not jump to Stage 4 content or mention reflective thinking cards.
 
 ### DECISION — do this first, before writing any response
 Look at the student's submitted message. Find the "Unsorted questions:" section.
@@ -79,6 +80,7 @@ If the student says they want to move on, skip to the next stage immediately. Te
 - Do not use phrases like "let's refine your questions" — the classifications are not wrong.
 - Do not introduce or continue thinking card exercises.
 - If student provides content answers instead of classification work, recognize this and redirect to the conversion exercise.
+- Do not mention or jump to Stage 4 content.
 
 ### Interface rule
 Use UI language such as click, select, rewrite, and submit.

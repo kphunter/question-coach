@@ -182,19 +182,52 @@ function saveSession(data) {
 
 /** Extract question focus from Stage 1 messages — no localStorage regex needed. */
 function extractQuestionFocus(msgs) {
-  const focus = [...msgs]
+  const candidates = [...msgs]
     .reverse()
-    .find((m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text));
-  if (!focus) return null;
-  let text = focus.text.split(/does this feel/i)[0].trim().replace(/[.,!?]+$/, "").trim();
-  // Strip "Your (question) focus (is|on):" prefix
-  text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
-  // Strip generic preamble openers like "That's a clear focus —", "Great —", "So —"
-  text = text.replace(/^[^—–]*[—–]\s*/, "");
-  // Strip trailing judgment phrases like "is a good focus", "is a clear focus", etc.
-  text = text.replace(/\s+is\s+a\s+\w+\s+(focus|direction|starting point)\.?$/i, "").trim();
-  text = text.charAt(0).toUpperCase() + text.slice(1);
-  return text || null;
+    .filter((m) => m.role === "assistant" && !m.isCoach && !/next stage/i.test(m.text));
+  if (!candidates.length) return null;
+
+  function clean(raw) {
+    let text = raw;
+    // Split on known confirmation/transition phrases — take only the focus part
+    const splitters = [
+      /does this feel/i,
+      /does that capture/i,
+      /does that feel/i,
+      /how about we start with that/i,
+      /this focus seems/i,
+      /that focus seems/i,
+      /shall we go with/i,
+      /ready to start/i,
+      /let['']?s go with/i,
+    ];
+    for (const re of splitters) {
+      if (re.test(text)) {
+        text = text.split(re)[0];
+        break;
+      }
+    }
+    text = text.trim().replace(/[.,!?]+$/, "").trim();
+    // Strip conversational preamble: "You're interested in...", "You're looking at...",
+    // "You're asking if/whether...", "So you want to explore..."
+    text = text.replace(/^(?:so\s+)?you['']?re\s+(?:interested\s+in|looking\s+at|asking\s+(?:if|whether|about)|focused\s+on|wanting\s+to\s+explore)\s+(?:whether\s+|how\s+|if\s+)?/i, "");
+    text = text.replace(/^(?:so\s+)?you\s+want\s+to\s+(?:explore|understand|know|look\s+at)\s+/i, "");
+    // Strip "Your (question) focus (is|on):" prefix
+    text = text.replace(/^(your\s+)?(?:question\s+)?focus\s+(?:is\s*(?:on\s*)?|on\s*)?[:\-–]?\s*/i, "");
+    // Strip generic preamble openers like "That's a clear focus —", "Great —"
+    text = text.replace(/^[^—–]*[—–]\s*/, "");
+    // Strip trailing judgment phrases
+    text = text.replace(/\s+is\s+a\s+\w+\s+(focus|direction|starting point)\.?$/i, "").trim();
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : null;
+  }
+
+  // Try the most recent candidate first; if it still looks like a transition
+  // phrase after cleaning (very short or starts with "How about"), try the next one.
+  for (const candidate of candidates) {
+    const result = clean(candidate.text);
+    if (result && result.split(" ").length >= 4) return result;
+  }
+  return clean(candidates[0].text);
 }
 
 /** Snapshot structured outputs when leaving a stage, for the analysis agent. */
