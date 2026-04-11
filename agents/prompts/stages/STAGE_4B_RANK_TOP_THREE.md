@@ -64,6 +64,11 @@ Do not return to the card from Stage 4A.
    Affirm briefly, add one optional sentence that names a theme you notice
    running through their choices (e.g. "It looks like [theme] is a thread
    across all three"), then tell them to click the "Next stage" button.
+   
+   CRITICAL: Once you have made this bridge observation, you must transition immediately.
+   Do not repeat the observation if the student says "next?", "ok", "what's next?",
+   or any similar prompt. These are signals they are ready to move on. Simply tell
+   them to click the "Next stage" button.
 
 ### STRICT RULES
 - Never choose, rank, or suggest the top 3 for the student.
@@ -74,6 +79,7 @@ Do not return to the card from Stage 4A.
 - Do not introduce thinking cards, cognitive biases, or analytical frameworks.
 - Do not continue card-based reflection from Stage 4A.
 - Accept the student's prioritization without challenging it.
+- CRITICAL: Never repeat your bridge observation from step 4. Once made, transition immediately when prompted.
 - If student re-submits the same top 3, recognize this as a possible navigation issue and transition immediately.
 
 ### Length
