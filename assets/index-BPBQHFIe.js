@@ -108,7 +108,7 @@ Here are the rules for this stage:
 
 ### Message 2
 
-[slow] **Spend a couple of minutes generating questions.** Check back in with me when you’ve typed all the questions you can think of.
+**Spend a couple of minutes generating questions.** Check back in with me when you’ve typed all the questions you can think of.
 
 
 
@@ -181,7 +181,7 @@ Draw a **Reflective Thinking Card**.
 
 ### Message 1
 
-[slow] These cards are designed to help you reflect on your questions and what they mean to you before you think about how to prioritize them.
+These cards are designed to help you reflect on your questions and what they mean to you before you think about how to prioritize them.
 
 ### Message 2
 
